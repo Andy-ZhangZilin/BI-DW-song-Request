@@ -1,0 +1,29 @@
+# 凭证文件（绝对不提交）
+.env
+
+# Python 编译缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# pytest 缓存
+.pytest_cache/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 报告目录（运行时生成，不提交 raw 报告）
+# reports/ 目录保留（通过 .gitkeep 追踪），但排除 raw.md 文件
+reports/*-raw.md

@@ -1,0 +1,27 @@
+# 字段需求配置：按报表分组
+# 每条记录含 display_name / source / table 三字段
+# table 对非 SQL 数据源为 null（可选字段）
+#
+# 注意：本文件命名为 field_requirements.yaml（下划线），不是 field-requirements.yaml
+
+profit_table:  # 利润表（04-08 截止）
+  - display_name: 日期
+    source: triplewhale
+    table: pixel_orders_table
+  - display_name: 销售额
+    source: triplewhale
+    table: pixel_orders_table
+  - display_name: SKU
+    source: tiktok
+    table: orders
+
+marketing_table:  # 营销表现表（04-20 截止）
+  - display_name: 曝光量
+    source: triplewhale
+    table: pixel_joined_tvf
+  - display_name: 点击量
+    source: triplewhale
+    table: pixel_joined_tvf
+  - display_name: 花费
+    source: triplewhale
+    table: pixel_joined_tvf
