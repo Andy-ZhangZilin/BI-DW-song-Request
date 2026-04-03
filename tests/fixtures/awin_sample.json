@@ -1,0 +1,29 @@
+[
+  {
+    "date": "2024-01-15",
+    "transaction_id": "TXN-001",
+    "amount": "99.00",
+    "currency": "USD",
+    "status": "approved",
+    "publisher_id": "12345",
+    "commission": "4.95"
+  },
+  {
+    "date": "2024-01-16",
+    "transaction_id": "TXN-002",
+    "amount": "149.50",
+    "currency": "USD",
+    "status": "pending",
+    "publisher_id": "12345",
+    "commission": null
+  },
+  {
+    "date": "2024-01-17",
+    "transaction_id": "TXN-003",
+    "amount": "75.00",
+    "currency": "GBP",
+    "status": "approved",
+    "publisher_id": "12345",
+    "commission": "3.75"
+  }
+]
