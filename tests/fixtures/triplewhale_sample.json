@@ -1,0 +1,102 @@
+{
+  "pixel_orders_table": {
+    "data": [
+      {
+        "order_id": "ORD-001",
+        "created_at": "2026-03-01T10:00:00Z",
+        "total_price": 99.99,
+        "currency": "USD",
+        "customer_id": "CUST-001",
+        "is_first_order": true,
+        "refund_amount": null,
+        "line_items": [{"sku": "SKU-A", "quantity": 2}],
+        "metadata": {"source": "web", "campaign": "spring_sale"}
+      },
+      {
+        "order_id": "ORD-002",
+        "created_at": "2026-03-02T11:00:00Z",
+        "total_price": 49.99,
+        "currency": "USD",
+        "customer_id": "CUST-002",
+        "is_first_order": false,
+        "refund_amount": 49.99,
+        "line_items": [{"sku": "SKU-B", "quantity": 1}],
+        "metadata": {"source": "mobile", "campaign": null}
+      }
+    ],
+    "total": 2
+  },
+  "pixel_joined_tvf": {
+    "data": [
+      {
+        "date": "2026-03-01",
+        "impressions": 12500,
+        "clicks": 340,
+        "ad_spend": 150.75,
+        "roas": 3.2,
+        "platform": "facebook",
+        "campaign_id": "CAMP-001"
+      },
+      {
+        "date": "2026-03-02",
+        "impressions": 9800,
+        "clicks": 275,
+        "ad_spend": 120.50,
+        "roas": 2.8,
+        "platform": "google",
+        "campaign_id": "CAMP-002"
+      }
+    ],
+    "total": 2
+  },
+  "sessions_table": {
+    "data": [
+      {
+        "session_id": "SESS-001",
+        "started_at": "2026-03-01T09:00:00Z",
+        "duration_seconds": 245,
+        "page_views": 5,
+        "converted": true,
+        "utm_source": "email",
+        "utm_medium": "newsletter",
+        "revenue": 99.99
+      },
+      {
+        "session_id": "SESS-002",
+        "started_at": "2026-03-01T14:30:00Z",
+        "duration_seconds": 60,
+        "page_views": 2,
+        "converted": false,
+        "utm_source": null,
+        "utm_medium": null,
+        "revenue": 0.0
+      }
+    ],
+    "total": 2
+  },
+  "product_analytics_tvf": {
+    "data": [
+      {
+        "product_id": "PROD-001",
+        "product_title": "Fishing Rod Pro",
+        "sku": "SKU-A",
+        "units_sold": 128,
+        "revenue": 6399.72,
+        "refund_rate": 0.02,
+        "in_stock": true,
+        "category": "fishing"
+      },
+      {
+        "product_id": "PROD-002",
+        "product_title": "Tackle Box Deluxe",
+        "sku": "SKU-B",
+        "units_sold": 74,
+        "revenue": 3699.26,
+        "refund_rate": 0.0,
+        "in_stock": true,
+        "category": "accessories"
+      }
+    ],
+    "total": 2
+  }
+}
