@@ -1,6 +1,6 @@
 # Story 4.1：Awin 爬虫数据源接入
 
-Status: review
+Status: done
 
 ## Story
 
@@ -394,6 +394,29 @@ outdoor-data-validator/
 - [Source: reporter.py — write_raw_report / init_validation_report 实现]
 - [Source: tests/conftest.py — mock_credentials fixture]
 - [Source: tests/test_reporter.py — 测试组织模式（class-based, monkeypatch）]
+
+### Review Findings
+
+- [x] [Review][Decision] authenticate() 与 fetch_sample() 各自独立登录 → 决策 B：提取 _login(page) helper，消除重复，各自保持独立浏览器生命周期
+- [x] [Review][Decision] _infer_type() 不解析字符串编码的数值 → 决策 B：尝试 int/float 解析，"99.00" 推断为 "number"
+- [x] [Review][Decision] 纯空白字符串是否视为空值 → 决策 B：改用 _is_empty() 统一判断，处理 None/""/"   "
+- [x] [Review][Patch] browser 变量未在 try 块外初始化，launch() 失败时 finally 抛出 UnboundLocalError [sources/awin.py:28,53]
+- [x] [Review][Patch] 60s 总超时仅单点检查（登录后、报表导航前），报表页 goto + networkidle 可各占 15s [sources/awin.py:59-62]
+- [x] [Review][Patch] _check_captcha() 对 page.content()（原始 HTML）匹配关键词，脚本/CSS 中的 "challenge" 等词可触发误报 [sources/awin.py:99]
+- [x] [Review][Patch] _extract_table_rows() 吞没所有异常仅记 warning，提取失败与合法空表行为无法区分 [sources/awin.py:93-107]
+- [x] [Review][Patch] 硬编码 [:20] 行上限未定义为命名常量 MAX_SAMPLE_ROWS [sources/awin.py:95,103]
+- [x] [Review][Patch] get_credentials() 的 KeyError/ValueError 在 authenticate() 和 fetch_sample() 中未捕获，直接传播给调用方 [sources/awin.py:26,50]
+- [x] [Review][Patch] init_validation_report() 的 OSError 未处理，文件写入失败导致 authenticate() 返回 False 尽管登录已成功 [sources/awin.py:41]
+- [x] [Review][Patch] 登录 URL 模式 **/awin/** 过于宽泛，凭证错误时错误页面也可能匹配导致误判为登录成功 [sources/awin.py:36,59]
+- [x] [Review][Patch] write_raw_report() 的 OSError 未专门处理，被 bare except 捕获重抛，无特定日志 [sources/awin.py:65]
+- [x] [Review][Patch] 重复列名会导致同名单元格值互相覆盖 [sources/awin.py:104-106]
+- [x] [Review][Patch] 表头 trim 后为空字符串时用作 dict key，多列可能冲突 [sources/awin.py:104-106]
+- [x] [Review][Patch] cells 数量少于 headers 的不完整行被静默丢弃，无 warning 日志 [sources/awin.py:103]
+- [x] [Review][Patch] 无表头分支选择器 "table tr:not(:first-child)" 可能将 th 表头行包含为数据行 [sources/awin.py:95]
+- [x] [Review][Patch] pytest.ini 缺少 addopts = -m "not integration"，需手动记住传参才能跳过集成测试 [pytest.ini:1]
+- [x] [Review][Patch] write_raw_report 透传 table_name 参数而非硬编码 None，不符合 Dev Note 4 [sources/awin.py:65]
+- [x] [Review][Defer] 集成测试仅断言返回类型 (bool/list)，不验证正确性 [tests/test_awin.py] — deferred, pre-existing
+- [x] [Review][Defer] fetch_sample() 入口未记录 mask 后的凭证日志（不同于 authenticate() 的日志模式） [sources/awin.py:50-57] — deferred, pre-existing
 
 ## Dev Agent Record
 
