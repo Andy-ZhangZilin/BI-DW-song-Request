@@ -31,6 +31,17 @@
 - `_load_field_requirements` 每次调用重新读取 YAML 无缓存 [reporter.py:33] — 性能优化，非正确性问题；此工具运行频率低，不阻塞当前功能
 - `write_text` 无 IO 异常处理（权限/磁盘错误）[reporter.py:171] — 防御性改进，调用方会收到明确的 traceback；可在 Epic 5 集成时统一添加错误处理层
 
+## Deferred from: code review of 4-2-cartsee-爬虫数据源接入 (2026-04-03)
+
+- URL 含 "login" 子路径时登录成功判断可能误判 [sources/cartsee.py:authenticate()] — CartSee 实际 URL 结构未知，推测性问题，集成测试时验证
+- fetch_sample() 无整体 60s 超时限制 [sources/cartsee.py:fetch_sample()] — 各步骤均有 15s timeout，暂不加全局 timer；若将来出现超时问题再补充
+- pytest.ini 未配置 addopts 默认过滤 integration 测试 [pytest.ini] — 设计选择，手动 -m "not integration" 符合项目约定
+
+## Deferred from: code review of 2-1-triplewhale-数据源接入 (2026-04-03)
+
+- `resp.json()` 未处理 JSONDecodeError [sources/triplewhale.py: _fetch_table] — 防御性编码，规范未要求；API 返回非 JSON 时 traceback 可见，不静默失败
+- `_get_api_key` KeyError 传播无 [triplewhale] 日志前缀 [sources/triplewhale.py: _get_api_key] — credentials 模块负责 ValueError，_get_api_key 职责明确；Epic 5 集成时统一添加错误层
+
 ## Deferred from: code review of 2-2-tiktok-shop-数据源接入 (2026-04-03)
 
 - 模块级全局变量 `_access_token`/`_shop_cipher` 非线程安全 [sources/tiktok.py:26-27] — 架构层设计决策，单线程 CLI 场景不影响正确性
@@ -39,3 +50,8 @@
 - `_sign_request` 未主动过滤 `sign` 键（调用顺序防护）[sources/tiktok.py:34] — 现有调用点均在 sign 前签名，潜在地雷而非当前 bug
 - 无 HTTP 重试/退避逻辑 [sources/tiktok.py] — 超出本 Story 范围，可在 Epic 5 集成层统一处理
 - 嵌套对象/数组字段 `sample_value` 在报告中 `str()` 化后冗长 [sources/tiktok.py:260] — reporter._escape_cell 系统性行为，非 tiktok 独有
+
+## Deferred from: code review of 4-4-社媒后台-stub-模块 (2026-04-03)
+
+- 测试仅验证 stub 行为，未来实现替换时测试需同步更新 [tests/test_social_media.py] — stub 被替换为真实实现时，pytest 测试将自然失效并需要更新，属预期工作
+- `extract_fields`/`fetch_sample` 未覆盖非空/非标准输入参数的测试 [tests/test_social_media.py] — stub 中全部输入行为相同；非标准输入边界测试在真实实现时补充
