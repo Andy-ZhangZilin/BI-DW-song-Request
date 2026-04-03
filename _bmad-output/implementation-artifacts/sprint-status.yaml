@@ -59,7 +59,7 @@ development_status:
   # Epic 3: 标准 API 数据源接入
   epic-3: in-progress
   3-1-钉钉多维表数据源接入: done
-  3-2-youtube-数据源接入: done
+  3-2-youtube-数据源接入: backlog
   epic-3-retrospective: optional
 
   # Epic 4: 爬虫数据源接入
