@@ -140,12 +140,25 @@ class TestExtractFieldsEdgeCases:
         result = awin.extract_fields(sample)
         assert result[0]["nullable"] is True
 
-    def test_mixed_types_infer_string(self):
-        """混合类型（字符串表示的数字）应保持 string 推断，不做类型转换。"""
+    def test_string_encoded_number_inferred_as_number(self):
+        """字符串编码的浮点数应推断为 'number'（Playwright inner_text 始终返回字符串）。"""
         sample = [{"amount": "99.00"}, {"amount": "149.50"}]
         result = awin.extract_fields(sample)
         amount_field = result[0]
-        assert amount_field["data_type"] == "string"
+        assert amount_field["data_type"] == "number"
+
+    def test_non_numeric_string_inferred_as_string(self):
+        """非数字字符串应推断为 'string'。"""
+        sample = [{"status": "approved"}, {"status": "pending"}]
+        result = awin.extract_fields(sample)
+        status_field = result[0]
+        assert status_field["data_type"] == "string"
+
+    def test_whitespace_string_treated_as_null(self):
+        """纯空白字符串视为空值，影响 nullable 判断（D3）。"""
+        sample = [{"field_z": "   "}, {"field_z": "有值"}]
+        result = awin.extract_fields(sample)
+        assert result[0]["nullable"] is True
 
     def test_multiple_records_consistent_keys(self):
         """多条记录键集合不一致时，联合所有键，缺失键 nullable=True。"""

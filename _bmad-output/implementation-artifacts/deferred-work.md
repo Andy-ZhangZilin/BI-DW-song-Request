@@ -56,6 +56,11 @@
 - 测试仅验证 stub 行为，未来实现替换时测试需同步更新 [tests/test_social_media.py] — stub 被替换为真实实现时，pytest 测试将自然失效并需要更新，属预期工作
 - `extract_fields`/`fetch_sample` 未覆盖非空/非标准输入参数的测试 [tests/test_social_media.py] — stub 中全部输入行为相同；非标准输入边界测试在真实实现时补充
 
+## Deferred from: code review of 4-1-awin-爬虫数据源接入 (2026-04-03)
+
+- 集成测试仅断言返回类型 (bool/list)，不验证正确性 [tests/test_awin.py] — 集成测试最低限度验证，覆盖率改进留待后续质量轮次
+- fetch_sample() 入口未记录 mask 后的凭证日志 [sources/awin.py:50-57] — 日志一致性改进，非安全漏洞；后续统一日志规范时处理
+
 ## Deferred from: code review of 4-3-partnerboost-爬虫数据源接入 (2026-04-03)
 
 - `authenticate()` debug/info 日志级别不一致 [sources/partnerboost.py:49] — 调用账号 mask 用 debug 级、认证结果用 info 级，属代码品质问题；统一日志级别可在后续质量改进轮次中处理
