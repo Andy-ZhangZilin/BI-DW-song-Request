@@ -1,6 +1,7 @@
 # Story 4.2: CartSee 爬虫数据源接入
 
 Status: done
+<!-- reviewed: 2026-04-03 -->
 
 ## Story
 
@@ -390,3 +391,9 @@ claude-sonnet-4-6
 - [x] [Review][Defer] URL 含 "login" 子路径时登录成功判断可能误判 [sources/cartsee.py:40] — deferred, CartSee 实际 URL 结构未知，推测性问题
 - [x] [Review][Defer] fetch_sample() 无整体 60s 超时限制 [sources/cartsee.py:fetch_sample] — deferred, 各步骤均有 15s timeout，暂不加全局 timer
 - [x] [Review][Defer] pytest.ini 未配置 addopts 默认过滤 integration 测试 [pytest.ini] — deferred, 设计选择，手动 -m "not integration" 符合项目约定
+- [x] [Review][Patch] extract_fields 仅迭代 sample[0] 的键，后续记录独有字段被忽略 — 已修复：合并所有记录键集合，保留首次出现顺序 [sources/cartsee.py:extract_fields]
+- [x] [Review][Patch] extract_fields 从 sample[0] 推断字段类型，首值为 None 时永久标注 "null" — 已修复：取首条非 None 值推断类型，提取 _infer_type() 辅助函数 [sources/cartsee.py:extract_fields]
+- [x] [Review][Patch] _extract_table_records 无表头时静默丢弃所有行（应生成 col_0, col_1 备用键） — 已修复：无表头时生成 col_{i} 键 [sources/cartsee.py:_extract_table_records]
+- [x] [Review][Patch] 凭证 KeyError 未处理：缺失 CARTSEE_USERNAME/PASSWORD 时抛出 KeyError 而非友好错误 — 已修复：try/except KeyError，authenticate 返回 False，fetch_sample 抛出 RuntimeError [sources/cartsee.py:22,63]
+- [x] [Review][Defer] 无样本数量上限（MAX_SAMPLE_ROWS）[sources/cartsee.py:_extract_table_records] — deferred, 项目级决策，大量行场景暂未遇到
+- [x] [Review][Defer] _try_extract_json_data 返回未经结构验证的 JS 对象 [sources/cartsee.py:_try_extract_json_data] — deferred, 辅助回退路径，主路径为 HTML table 提取

@@ -19,9 +19,13 @@ def authenticate() -> bool:
     """使用账号密码通过 Playwright 登录 CartSee EDM 后台。
     成功返回 True，失败打印错误并返回 False。浏览器在 finally 块中关闭。
     """
-    creds = get_credentials()
-    username = creds["CARTSEE_USERNAME"]
-    password = creds["CARTSEE_PASSWORD"]
+    try:
+        creds = get_credentials()
+        username = creds["CARTSEE_USERNAME"]
+        password = creds["CARTSEE_PASSWORD"]
+    except KeyError as e:
+        logger.error(f"[cartsee] 认证 ... 失败：缺失凭证键 {e}")
+        return False
     logger.info(f"[cartsee] 认证 用户 {mask_credential(username)} ...")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -55,9 +59,12 @@ def fetch_sample(table_name: str = None) -> list[dict]:
     遇到验证码时 raise RuntimeError，浏览器在 finally 块中关闭。
     table_name 参数忽略（非 SQL 数据源）。
     """
-    creds = get_credentials()
-    username = creds["CARTSEE_USERNAME"]
-    password = creds["CARTSEE_PASSWORD"]
+    try:
+        creds = get_credentials()
+        username = creds["CARTSEE_USERNAME"]
+        password = creds["CARTSEE_PASSWORD"]
+    except KeyError as e:
+        raise RuntimeError(f"[cartsee] fetch_sample 失败：缺失凭证键 {e}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -128,10 +135,15 @@ def _extract_table_records(page) -> list[dict]:
         rows = table.query_selector_all("tbody tr")
         for row in rows:
             cells = row.query_selector_all("td")
-            if cells and headers:
+            if cells:
                 record = {}
                 for i, cell in enumerate(cells):
-                    key = headers[i] if i < len(headers) else f"field_{i}"
+                    if headers and i < len(headers):
+                        key = headers[i]
+                    elif headers and i >= len(headers):
+                        key = f"field_{i}"
+                    else:
+                        key = f"col_{i}"
                     record[key] = cell.inner_text().strip()
                 if record:
                     records.append(record)
@@ -166,34 +178,56 @@ def _try_extract_json_data(page) -> list[dict]:
     return []
 
 
+def _infer_type(value) -> str:
+    """从单个值推断数据类型字符串。"""
+    if isinstance(value, bool):
+        return "boolean"
+    elif isinstance(value, (int, float)):
+        return "number"
+    elif isinstance(value, list):
+        return "array"
+    elif isinstance(value, dict):
+        return "object"
+    elif value is None:
+        return "null"
+    else:
+        return "string"
+
+
 def extract_fields(sample: list[dict]) -> list[dict]:
     """从样本数据中提取字段信息，返回标准 FieldInfo 列表。"""
     if not sample:
         return []
 
+    # 合并所有记录的键，保留首次出现的顺序
+    all_keys: list[str] = []
+    seen: set[str] = set()
+    for record in sample:
+        for key in record:
+            if key not in seen:
+                all_keys.append(key)
+                seen.add(key)
+
     fields: list[dict] = []
-    first = sample[0]
+    for key in all_keys:
+        # 从首条非 None 值推断类型
+        non_none_value = next(
+            (record[key] for record in sample if key in record and record[key] is not None),
+            None,
+        )
+        data_type = _infer_type(non_none_value)
 
-    for key, value in first.items():
-        if isinstance(value, bool):
-            data_type = "boolean"
-        elif isinstance(value, (int, float)):
-            data_type = "number"
-        elif isinstance(value, list):
-            data_type = "array"
-        elif isinstance(value, dict):
-            data_type = "object"
-        elif value is None:
-            data_type = "null"
-        else:
-            data_type = "string"
-
+        # 取第一条含该键的记录的值作为示例
+        sample_value = next(
+            (record[key] for record in sample if key in record),
+            None,
+        )
         nullable = any(record.get(key) is None for record in sample)
 
         fields.append({
             "field_name": key,
             "data_type": data_type,
-            "sample_value": value,
+            "sample_value": sample_value,
             "nullable": nullable,
         })
 

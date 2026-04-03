@@ -36,6 +36,8 @@
 - URL 含 "login" 子路径时登录成功判断可能误判 [sources/cartsee.py:authenticate()] — CartSee 实际 URL 结构未知，推测性问题，集成测试时验证
 - fetch_sample() 无整体 60s 超时限制 [sources/cartsee.py:fetch_sample()] — 各步骤均有 15s timeout，暂不加全局 timer；若将来出现超时问题再补充
 - pytest.ini 未配置 addopts 默认过滤 integration 测试 [pytest.ini] — 设计选择，手动 -m "not integration" 符合项目约定
+- 无样本数量上限 MAX_SAMPLE_ROWS [sources/cartsee.py:_extract_table_records] — 项目级决策，大量行场景暂未遇到，参考 awin.py MAX_SAMPLE_ROWS=20 模式
+- _try_extract_json_data 返回未经结构验证的 JS 对象 [sources/cartsee.py:_try_extract_json_data] — 辅助回退路径，主路径为 HTML table 提取；实际触发概率极低
 
 ## Deferred from: code review of 2-1-triplewhale-数据源接入 (2026-04-03)
 
