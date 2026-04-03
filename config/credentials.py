@@ -1,6 +1,10 @@
 """凭证加载器：唯一允许读取 .env 的位置。
 
 所有 source 模块必须从此模块导入凭证，禁止直接调用 os.getenv()。
+
+公开接口：
+    get_credentials() -> dict[str, str]  — 加载并校验所有必需凭证
+    mask_credential(value: str) -> str   — 日志脱敏唯一入口，凭证显示前 4 位 + ****
 """
 import os
 from pathlib import Path
@@ -48,3 +52,24 @@ def get_credentials() -> dict[str, str]:
         raise ValueError(f"缺少以下必需凭证：{', '.join(missing)}")
 
     return creds
+
+
+def mask_credential(value: str) -> str:
+    """遮蔽凭证值用于日志输出：保留前 4 位，其余替换为 ****。
+
+    这是项目中凭证脱敏的唯一实现，所有 source 模块日志输出凭证时必须使用此函数。
+    禁止在其他位置重复实现脱敏逻辑。
+
+    用法示例：
+        from config.credentials import get_credentials, mask_credential
+        creds = get_credentials()
+        print(f"[triplewhale] 使用 API Key: {mask_credential(creds['TRIPLEWHALE_API_KEY'])}")
+        # 输出：[triplewhale] 使用 API Key: abcd****
+
+    Args:
+        value: 需要遮蔽的凭证值
+
+    Returns:
+        前 4 位明文 + "****"，若值长度 < 4 则明文部分按实际长度截取
+    """
+    return value[:4] + "****"

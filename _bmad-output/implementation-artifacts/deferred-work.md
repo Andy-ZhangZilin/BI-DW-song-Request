@@ -10,3 +10,11 @@
 - `--source` 与 `--all` 同时传入无冲突检查 — Story 5.1 处理互斥逻辑
 - `reporter.py` 未包含 `reports/` 目录创建保障 — Story 1.4 实现 `write_raw_report` 时添加 `mkdir`
 - `.gitignore` 中额外排除 `reports/*-raw.md` 不在 AC 规范内 — 属合理实践；下一 Story 统一确认
+
+## Deferred from: code review of 1-2-凭证管理器 (2026-04-03)
+
+- short credential 前4位全部暴露 [config/credentials.py:75] — 设计决策：实际凭证长度 32+，影响可忽略
+- load_dotenv 在模块导入时执行 [config/credentials.py:13] — Story 1.1 遗留行为，conftest 已通过 patch 缓解
+- 纯空白字符串凭证未被 `if not value` 拦截 [config/credentials.py:46] — Story 1.1 遗留行为，不在本 Story 范围内修复
+- mask_credential 尚未在任何生产日志路径调用 [config/credentials.py:57] — 将由 source Stories 2.x–4.x 落实
+- mask_credential(None) 抛出 TypeError [config/credentials.py:57] — 调用方契约，类型注解已明确声明 str
