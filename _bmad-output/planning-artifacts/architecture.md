@@ -697,7 +697,7 @@ CLI 参数（--source / --all）
 
 **推荐实现顺序：**
 1. 项目结构初始化 + `config/credentials.py` + `.env.example`（凭证框架优先）
-2. `config/field_requirements.yaml` 基础内容（利润表相关字段）
+2. `config/field_requirements.yaml` 完整内容（全部 11 张数据表字段，来源：《指标梳理及数据需求沟通-2026.03.31.xlsx》）
 3. `reporter.py` 报告渲染器（raw 写入 + validation 首次创建）
 4. `sources/triplewhale.py`（优先级最高，覆盖利润表 + 营销表现表）
 5. `sources/tiktok.py`（利润表 + TikTok 销售表）
