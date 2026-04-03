@@ -1,0 +1,66 @@
+{
+  "code": 0,
+  "message": "Success",
+  "data": {
+    "order_list": [
+      {
+        "order_id": "576462289232020481",
+        "order_status": 105,
+        "create_time": 1693468800,
+        "update_time": 1693468900,
+        "buyer_uid": "123456789",
+        "buyer_message": "",
+        "cancel_reason": "",
+        "cancel_user": "",
+        "collection_time": 0,
+        "delivery_due_time": 1693555200,
+        "delivery_option_id": "standard",
+        "delivery_option_name": "Standard Delivery",
+        "delivery_sla_time": 86400,
+        "estimated_shipping_fee": "3.99",
+        "fulfillment_type": 1,
+        "is_cod": false,
+        "is_sample_order": false,
+        "paid_time": 1693468850,
+        "payment_method_name": "stripe",
+        "platform_discount": "0.00",
+        "recipient_address": {
+          "name": "Test User",
+          "phone_number": "****1234",
+          "address_line1": "123 Test St",
+          "city": "Seattle",
+          "state": "WA",
+          "country_code": "US",
+          "zipcode": "98101"
+        },
+        "seller_discount": "0.00",
+        "shipping_address": {},
+        "shop_id": "7234567890",
+        "shop_name": "Test Shop",
+        "skus": [
+          {
+            "id": "1234567890",
+            "product_id": "9876543210",
+            "product_name": "Test Product",
+            "sku_name": "Test SKU - Blue / M",
+            "quantity": 1,
+            "sale_price": "29.99",
+            "original_price": "39.99",
+            "seller_discount": "0.00",
+            "platform_discount": "10.00",
+            "sku_type": 0,
+            "cancel_user": "",
+            "tracking_number": ""
+          }
+        ],
+        "status": "AWAITING_SHIPMENT",
+        "sub_orders": [],
+        "total_amount": "29.99",
+        "trade_order_id": ""
+      }
+    ],
+    "total_count": 1,
+    "next_page_token": ""
+  },
+  "request_id": "test_request_id_001"
+}

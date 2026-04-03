@@ -30,3 +30,12 @@
 
 - `_load_field_requirements` 每次调用重新读取 YAML 无缓存 [reporter.py:33] — 性能优化，非正确性问题；此工具运行频率低，不阻塞当前功能
 - `write_text` 无 IO 异常处理（权限/磁盘错误）[reporter.py:171] — 防御性改进，调用方会收到明确的 traceback；可在 Epic 5 集成时统一添加错误处理层
+
+## Deferred from: code review of 2-2-tiktok-shop-数据源接入 (2026-04-03)
+
+- 模块级全局变量 `_access_token`/`_shop_cipher` 非线程安全 [sources/tiktok.py:26-27] — 架构层设计决策，单线程 CLI 场景不影响正确性
+- `nullable` 推断仅基于 `sample[0]` 第一条记录 [sources/tiktok.py:256] — page_size=1 场景 by design，字段发现用途可接受
+- `access_token` 过期无感知，`fetch_sample` 无自动重认证 [sources/tiktok.py:181] — 字段发现工具 authenticate+fetch_sample 连续调用设计，可在 Epic 5 集成层添加重试
+- `_sign_request` 未主动过滤 `sign` 键（调用顺序防护）[sources/tiktok.py:34] — 现有调用点均在 sign 前签名，潜在地雷而非当前 bug
+- 无 HTTP 重试/退避逻辑 [sources/tiktok.py] — 超出本 Story 范围，可在 Epic 5 集成层统一处理
+- 嵌套对象/数组字段 `sample_value` 在报告中 `str()` 化后冗长 [sources/tiktok.py:260] — reporter._escape_cell 系统性行为，非 tiktok 独有
