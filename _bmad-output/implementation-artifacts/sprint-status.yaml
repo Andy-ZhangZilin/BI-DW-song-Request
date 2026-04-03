@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-03
+last_updated: 2026-04-03  # updated by code-review story 5-1
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -72,7 +72,7 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: 统一 CLI 验证入口与完整流水线
-  epic-5: backlog
-  5-1-validate.py-cli-入口与调度器: backlog
+  epic-5: in-progress
+  5-1-validate.py-cli-入口与调度器: done
   5-2-端到端集成验证: backlog
   epic-5-retrospective: optional

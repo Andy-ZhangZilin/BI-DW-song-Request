@@ -73,3 +73,8 @@
 
 - AC4 缺失：`write_raw_report` 未在 source 模块中调用 [sources/youtube.py] — 架构设计决策：`validate.py`（Epic 5）dispatcher 负责协调 reporter 调用，source 模块只负责三个公开接口
 - `resp.json()` 未处理 `JSONDecodeError` [sources/youtube.py:87] — 防御性编码，规范未要求；API 返回非 JSON 时 traceback 可见，不静默失败（同 triplewhale 延后模式）
+
+## Deferred from: code review of 5-1-validate.py-cli-入口与调度器 (2026-04-03)
+
+- `--source` 与 `--all` 同时传入时静默忽略 `--all` [validate.py:147] — AC 未明确禁止，`args.source` 优先；如需互斥可加 mutually_exclusive_group
+- 硬编码 `"triplewhale"` 字符串做多表路由判断 [validate.py:78] — Story 规范明确要求此路由逻辑；如需泛化可引入 source 配置对象
