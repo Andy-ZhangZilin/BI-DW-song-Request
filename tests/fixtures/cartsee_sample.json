@@ -1,0 +1,38 @@
+[
+  {
+    "campaign_name": "Abandoned Cart Recovery #1",
+    "sent": 1250,
+    "opened": 387,
+    "open_rate": 30.96,
+    "clicked": 98,
+    "click_rate": 7.84,
+    "unsubscribed": 3,
+    "revenue": 1842.50,
+    "status": "active",
+    "created_at": "2026-03-15"
+  },
+  {
+    "campaign_name": "Welcome Series #3",
+    "sent": 890,
+    "opened": 312,
+    "open_rate": 35.06,
+    "clicked": 67,
+    "click_rate": 7.53,
+    "unsubscribed": 1,
+    "revenue": 956.00,
+    "status": "active",
+    "created_at": "2026-03-20"
+  },
+  {
+    "campaign_name": "Flash Sale Promo",
+    "sent": 3200,
+    "opened": 864,
+    "open_rate": 27.00,
+    "clicked": 220,
+    "click_rate": 6.88,
+    "unsubscribed": 12,
+    "revenue": null,
+    "status": "completed",
+    "created_at": "2026-03-28"
+  }
+]

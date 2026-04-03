@@ -10,6 +10,7 @@ TEST_CREDENTIALS: dict[str, str] = {
     "TIKTOK_APP_SECRET": "test_tiktok_app_secret",
     "DINGTALK_APP_KEY": "test_dingtalk_app_key",
     "DINGTALK_APP_SECRET": "test_dingtalk_app_secret",
+    "DINGTALK_WORKBOOK_ID": "test_workbook_id",
     "YOUTUBE_API_KEY": "test_youtube_key",
     "AWIN_USERNAME": "test_awin_user",
     "AWIN_PASSWORD": "test_awin_pass",

@@ -12,6 +12,7 @@ ALL_VALID_ENV = {
     "TIKTOK_APP_SECRET": "tiktok_app_secret",
     "DINGTALK_APP_KEY": "dingtalk_app_key",
     "DINGTALK_APP_SECRET": "dingtalk_app_secret",
+    "DINGTALK_WORKBOOK_ID": "test_workbook_id",
     "YOUTUBE_API_KEY": "youtube_key_xyz",
     "AWIN_USERNAME": "awin@example.com",
     "AWIN_PASSWORD": "awin_pass",

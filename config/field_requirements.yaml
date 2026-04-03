@@ -71,3 +71,24 @@ youtube_table:
   - display_name: 点赞数
     source: youtube
     table: null
+
+# -----------------------------------------------------------------------
+# 营销投放表（marketing_performance_table）
+# 钉钉多维表数据源，table 为 null（非 SQL 数据源）
+# -----------------------------------------------------------------------
+marketing_performance_table:
+  - display_name: 营销日期
+    source: dingtalk
+    table: null
+
+  - display_name: 营销投入
+    source: dingtalk
+    table: null
+
+  - display_name: 渠道名称
+    source: dingtalk
+    table: null
+
+  - display_name: 转化数
+    source: dingtalk
+    table: null
