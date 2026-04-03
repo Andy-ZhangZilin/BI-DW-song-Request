@@ -1,27 +1,73 @@
-# 字段需求配置：按报表分组
-# 每条记录含 display_name / source / table 三字段
-# table 对非 SQL 数据源为 null（可选字段）
+# config/field_requirements.yaml
+# 字段需求配置 — 按报表分组，每条记录含三个字段：
+#   display_name: 中文需求字段名（唯一显示标识）
+#   source:       数据源名称（对应 sources/ 目录下模块文件名，不含 .py）
+#   table:        表/端点名称（非 SQL 数据源可为 null 或省略此键）
 #
-# 注意：本文件命名为 field_requirements.yaml（下划线），不是 field-requirements.yaml
+# 说明：
+#   - 此文件是纯配置，修改后无需改动任何 Python 代码
+#   - reporter.py 读取本文件渲染"需求字段（待人工对照）"区块
+#   - 不填写 api_field，工具以纯发现模式运行，字段对照由人工完成
 
-profit_table:  # 利润表（04-08 截止）
+# -----------------------------------------------------------------------
+# 利润表（profit_table）
+# 对应《数据表需求》文档"利润表"，截止日期 04-08
+# -----------------------------------------------------------------------
+profit_table:
   - display_name: 日期
     source: triplewhale
     table: pixel_orders_table
+
   - display_name: 销售额
     source: triplewhale
     table: pixel_orders_table
+
+  - display_name: 订单量
+    source: triplewhale
+    table: pixel_orders_table
+
   - display_name: SKU
     source: tiktok
     table: orders
 
-marketing_table:  # 营销表现表（04-20 截止）
+  - display_name: TikTok 销售额
+    source: tiktok
+    table: orders
+
+# -----------------------------------------------------------------------
+# 营销表现表（marketing_table）
+# 对应《数据表需求》文档"营销表现表"，截止日期 04-20
+# -----------------------------------------------------------------------
+marketing_table:
   - display_name: 曝光量
     source: triplewhale
     table: pixel_joined_tvf
+
   - display_name: 点击量
     source: triplewhale
     table: pixel_joined_tvf
-  - display_name: 花费
+
+  - display_name: 广告花费
     source: triplewhale
     table: pixel_joined_tvf
+
+  - display_name: ROAS
+    source: triplewhale
+    table: pixel_joined_tvf
+
+# -----------------------------------------------------------------------
+# YouTube 内容表（youtube_table）
+# 非 SQL 数据源，table 字段为 null（PyYAML 加载后值为 None，视为可选）
+# -----------------------------------------------------------------------
+youtube_table:
+  - display_name: 视频标题
+    source: youtube
+    table: null
+
+  - display_name: 观看次数
+    source: youtube
+    table: null
+
+  - display_name: 点赞数
+    source: youtube
+    table: null

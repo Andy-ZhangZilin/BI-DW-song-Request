@@ -46,8 +46,8 @@ development_status:
   epic-1: in-progress
   1-1-项目结构初始化: done
   1-2-凭证管理器: done
-  1-3-字段需求配置: backlog
-  1-4-报告渲染器: backlog
+  1-3-字段需求配置: done
+  1-4-报告渲染器: done
   epic-1-retrospective: optional
 
   # Epic 2: 高优先级 API 数据源接入
