@@ -57,17 +57,17 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: 标准 API 数据源接入
-  epic-3: backlog
-  3-1-钉钉多维表数据源接入: backlog
+  epic-3: in-progress
+  3-1-钉钉多维表数据源接入: done
   3-2-youtube-数据源接入: backlog
   epic-3-retrospective: optional
 
   # Epic 4: 爬虫数据源接入
-  epic-4: backlog
-  4-1-awin-爬虫数据源接入: backlog
+  epic-4: in-progress
+  4-1-awin-爬虫数据源接入: review
   4-2-cartsee-爬虫数据源接入: backlog
   4-3-partnerboost-爬虫数据源接入: backlog
-  4-4-社媒后台-stub-模块: backlog
+  4-4-社媒后台-stub-模块: review
   epic-4-retrospective: optional
 
   # Epic 5: 统一 CLI 验证入口与完整流水线

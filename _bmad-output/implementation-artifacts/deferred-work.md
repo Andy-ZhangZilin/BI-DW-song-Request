@@ -55,3 +55,8 @@
 
 - 测试仅验证 stub 行为，未来实现替换时测试需同步更新 [tests/test_social_media.py] — stub 被替换为真实实现时，pytest 测试将自然失效并需要更新，属预期工作
 - `extract_fields`/`fetch_sample` 未覆盖非空/非标准输入参数的测试 [tests/test_social_media.py] — stub 中全部输入行为相同；非标准输入边界测试在真实实现时补充
+
+## Deferred from: code review of 3-2-youtube-数据源接入 (2026-04-03)
+
+- AC4 缺失：`write_raw_report` 未在 source 模块中调用 [sources/youtube.py] — 架构设计决策：`validate.py`（Epic 5）dispatcher 负责协调 reporter 调用，source 模块只负责三个公开接口
+- `resp.json()` 未处理 `JSONDecodeError` [sources/youtube.py:87] — 防御性编码，规范未要求；API 返回非 JSON 时 traceback 可见，不静默失败（同 triplewhale 延后模式）
