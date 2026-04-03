@@ -78,3 +78,12 @@
 
 - `--source` 与 `--all` 同时传入时静默忽略 `--all` [validate.py:147] — AC 未明确禁止，`args.source` 优先；如需互斥可加 mutually_exclusive_group
 - 硬编码 `"triplewhale"` 字符串做多表路由判断 [validate.py:78] — Story 规范明确要求此路由逻辑；如需泛化可引入 source 配置对象
+
+## Deferred from: code review of 5-2-端到端集成验证 (2026-04-03)
+
+- 每个测试方法重复5行 setup 代码，应提取为 fixture [tests/test_e2e.py] — 与 test_validate.py 保持一致的既有模式，可在后续测试重构时统一处理
+- import 语句写在测试方法体内而非模块级 [tests/test_e2e.py] — 与 test_validate.py 既有风格一致，Python 合法写法，可在后续统一重构
+- `_make_all_mock_sources` 硬编码8个 source 名称 [tests/test_e2e.py:47] — 与 test_validate.py 保持一致，新增 source 时需同步更新两处
+- `--all` 测试中 social_media 使用正常 mock，未体现真实 NotImplementedError [tests/test_e2e.py:47] — 属设计决策（Dev Notes 明确），如需验证真实行为可在 AC3 相关测试中补充
+- AC4 未覆盖 triplewhale 多表场景下 validation.md 保护 — 超出规格要求的额外覆盖，可在后续扩展测试时补充
+- AC2/AC3 未测试 `authenticate()` 直接抛异常场景 — AC2 规格仅要求"返回 False"场景，异常场景已由 test_validate.py AC7 部分覆盖
