@@ -1,6 +1,6 @@
 # Story 4.3: PartnerBoost 爬虫数据源接入
 
-Status: review
+Status: done
 
 ## Story
 
