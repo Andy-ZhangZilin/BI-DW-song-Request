@@ -4,6 +4,22 @@
   1. 调用 DTC getAccessToken → dtc_access_token
   2. 用 dtc_access_token 调用 DTC getTiktokShopSecret → TikTok access_token + cipher
   3. 用 TikTok access_token + cipher 调用 TikTok Open API
+
+fetch_sample(table_name) 路由表（共 7 个，6 个有效接口 + 1 个暂无）：
+  shop_product_performance       → GET  /analytics/202509/shop_products/{product_id}/performance
+  affiliate_creator_orders       → POST /affiliate_creator/202410/orders/search
+  video_performances             → GET  /analytics/202403/videos/performances
+  ad_spend                       → 暂无对应 Shop API，返回空列表
+  return_refund                  → POST /return_refund/202602/returns/search
+  affiliate_sample_status        → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
+                                        products/{product_id}/creator/{creator_temp_id}/
+                                        content/statistics/sample/status
+  affiliate_campaign_performance → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
+                                        products/{product_id}/performance
+
+含动态路径参数的接口（shop_product_performance / affiliate_sample_status /
+affiliate_campaign_performance）需在 .env 中配置：
+  TIKTOK_PRODUCT_ID, TIKTOK_CAMPAIGN_ID, TIKTOK_CREATOR_TEMP_ID
 """
 import hashlib
 import hmac
@@ -29,6 +45,20 @@ _DTC_APP_SECRET = "CBW3rpFfeobg85uu"
 # HTTP 超时（架构规范：30s）
 REQUEST_TIMEOUT = 30
 
+# 支持的数据表名列表（7 个路由，6 个有效接口 + 1 个暂无的广告花费）
+TABLES: List[str] = [
+    "shop_product_performance",
+    "affiliate_creator_orders",
+    "video_performances",
+    "ad_spend",
+    "return_refund",
+    "affiliate_sample_status",
+    "affiliate_campaign_performance",
+]
+
+# 默认表（fetch_sample(None) 时使用）
+_DEFAULT_TABLE: str = "return_refund"
+
 # 模块级状态变量（仅在同一进程运行周期内有效，不跨进程持久化）
 _access_token: Optional[str] = None
 _shop_cipher: Optional[str] = None
@@ -53,7 +83,7 @@ def _sign_request(app_secret: str, path: str, params: dict, body: Optional[dict]
     import json as _json
     sorted_params = "".join(f"{k}{v}" for k, v in sorted(params.items()))
     sign_input = path + sorted_params
-    if body:
+    if body is not None:
         sign_input += _json.dumps(body)
     sign_str = f"{app_secret}{sign_input}{app_secret}"
     signature = hmac.new(
@@ -76,7 +106,6 @@ def _get_dtc_token() -> str:
     resp = requests.get(_DTC_ACCESS_TOKEN_URL, params=params, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     data = resp.json()
-
     token = data.get("data", {}).get("access_token")
     if not token:
         raise RuntimeError(f"DTC getAccessToken 失败：{data}")
@@ -97,33 +126,277 @@ def _get_tiktok_auth_via_dtc(app_key: str, app_secret: str) -> Tuple[str, str]:
     dtc_token = _get_dtc_token()
     params = {"tiktok_app_key": app_key, "tiktok_app_secret": app_secret}
     headers = {"X-HUB-TOKEN": dtc_token, "Content-Type": "application/json"}
-
     resp = requests.get(
         _DTC_SHOP_SECRET_URL, params=params, headers=headers, timeout=REQUEST_TIMEOUT
     )
     resp.raise_for_status()
     data = resp.json()
-
     if data.get("code") != 200:
         raise RuntimeError(f"DTC getTiktokShopSecret 失败：{data}")
-
-    shops = data.get("data", [])
+    shops = data.get("data") or []
     if not shops:
         raise RuntimeError("DTC 返回的店铺列表为空")
-
-    # 优先选择店铺名包含 "Piscifun" 的店铺
     shop = next(
         (s for s in shops if "Piscifun" in (s.get("shop_name") or "")),
         shops[0],
     )
-
     access_token = shop.get("access_token")
     cipher = shop.get("cipher")
     if not access_token or not cipher:
         raise RuntimeError(f"DTC 返回的店铺数据缺少 access_token 或 cipher：{shop}")
-
     logger.info(f"[tiktok] 使用店铺：{shop.get('shop_name')}（id={shop.get('id')}）")
     return access_token, cipher
+
+
+def _build_signed_params(app_key: str, app_secret: str, path: str, body: Optional[dict] = None) -> dict:
+    """构造带签名的 query 参数字典（包含 shop_cipher）。
+
+    注：时间戳使用当前时间 -60s，以兼容 TikTok 服务端 ±300s 容差。
+    """
+    params: dict = {
+        "app_key": app_key,
+        "shop_cipher": _shop_cipher,
+        "timestamp": str(int(time.time()) - 60),
+    }
+    params["sign"] = _sign_request(app_secret, path, params, body)
+    return params
+
+
+def _api_headers() -> dict:
+    """返回 TikTok API 通用请求头。"""
+    return {
+        "x-tts-access-token": _access_token,
+        "Content-Type": "application/json",
+    }
+
+
+def _extract_list_from_data(data: object) -> List[Dict]:
+    """从 API 响应 data 字段中提取记录列表。
+
+    若 data 是列表，直接返回。
+    若 data 是字典，尝试常见 list key（list/items/records/results/performances/data），
+    否则将整个 dict 包装为 [data] 返回（单条记录场景）。
+    """
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("list", "items", "records", "results", "performances", "data"):
+            val = data.get(key)
+            if isinstance(val, list) and val:
+                return val
+        return [data]
+    return []
+
+
+# ---- 各路由私有实现 ----
+
+def _fetch_return_refund(app_key: str, app_secret: str) -> List[Dict]:
+    """POST /return_refund/202602/returns/search — 退款数据。"""
+    path = "/return_refund/202602/returns/search"
+    payload: dict = {"page_size": 20}
+    params = _build_signed_params(app_key, app_secret, path, body=payload)
+    logger.info("[tiktok] 获取退款样本 ...")
+    resp = requests.post(
+        f"{BASE_URL}{path}",
+        params=params,
+        json=payload,
+        headers=_api_headers(),
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(
+            f"[tiktok] 退款查询失败，code={data.get('code')}，message={data.get('message')}"
+        )
+    resp_data = data.get("data") or {}
+    records = resp_data.get("returns") if "returns" in resp_data else resp_data.get("return_list", [])
+    if not records:
+        logger.warning("[tiktok] 退款查询返回空列表（当前店铺无退款历史），字段发现将跳过")
+        return []
+    logger.info(f"[tiktok] 获取退款样本 ... 成功（{len(records)} 条记录）")
+    return records
+
+
+def _fetch_affiliate_creator_orders(app_key: str, app_secret: str) -> List[Dict]:
+    """POST /affiliate_creator/202410/orders/search — 达人订单数据。"""
+    path = "/affiliate_creator/202410/orders/search"
+    payload: dict = {"page_size": 10}
+    params = _build_signed_params(app_key, app_secret, path, body=payload)
+    logger.info("[tiktok] 获取达人订单样本 ...")
+    resp = requests.post(
+        f"{BASE_URL}{path}",
+        params=params,
+        json=payload,
+        headers=_api_headers(),
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(
+            f"[tiktok] 达人订单查询失败，code={data.get('code')}，message={data.get('message')}"
+        )
+    resp_data = data.get("data") or {}
+    records = resp_data.get("orders", [])
+    if not records:
+        logger.warning("[tiktok] 达人订单查询返回空列表，字段发现将跳过")
+        return []
+    logger.info(f"[tiktok] 获取达人订单样本 ... 成功（{len(records)} 条记录）")
+    return records
+
+
+def _fetch_video_performances(app_key: str, app_secret: str) -> List[Dict]:
+    """GET /analytics/202403/videos/performances — 视频表现。"""
+    path = "/analytics/202403/videos/performances"
+    params = _build_signed_params(app_key, app_secret, path)
+    logger.info("[tiktok] 获取视频表现样本 ...")
+    resp = requests.get(
+        f"{BASE_URL}{path}",
+        params=params,
+        headers=_api_headers(),
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(
+            f"[tiktok] 视频表现查询失败，code={data.get('code')}，message={data.get('message')}"
+        )
+    resp_data = data.get("data") or []
+    records = _extract_list_from_data(resp_data)
+    if not records:
+        logger.warning("[tiktok] 视频表现查询返回空列表，字段发现将跳过")
+        return []
+    logger.info(f"[tiktok] 获取视频表现样本 ... 成功（{len(records)} 条记录）")
+    return records
+
+
+def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]:
+    """GET /analytics/202509/shop_products/{product_id}/performance — 店铺商品表现。
+
+    需在 .env 中配置 TIKTOK_PRODUCT_ID；未配置时返回空列表。
+    """
+    product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
+    if not product_id:
+        logger.warning("[tiktok] TIKTOK_PRODUCT_ID 未配置，shop_product_performance 跳过")
+        return []
+    path = f"/analytics/202509/shop_products/{product_id}/performance"
+    params = _build_signed_params(app_key, app_secret, path)
+    logger.info(f"[tiktok] 获取店铺商品表现（product_id={product_id}）...")
+    resp = requests.get(
+        f"{BASE_URL}{path}",
+        params=params,
+        headers=_api_headers(),
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(
+            f"[tiktok] 店铺商品表现查询失败，code={data.get('code')}，message={data.get('message')}"
+        )
+    resp_data = data.get("data") or {}
+    records = _extract_list_from_data(resp_data)
+    if not records:
+        logger.warning("[tiktok] 店铺商品表现查询返回空，字段发现将跳过")
+        return []
+    logger.info(f"[tiktok] 获取店铺商品表现 ... 成功（{len(records)} 条记录）")
+    return records
+
+
+def _fetch_affiliate_sample_status(app_key: str, app_secret: str) -> List[Dict]:
+    """GET /affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/
+    creator/{creator_temp_id}/content/statistics/sample/status — 获取寄样数。
+
+    需在 .env 中配置 TIKTOK_CAMPAIGN_ID、TIKTOK_PRODUCT_ID、TIKTOK_CREATOR_TEMP_ID；
+    任一未配置则返回空列表。
+    """
+    campaign_id = _creds_module.get_optional_config("TIKTOK_CAMPAIGN_ID")
+    product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
+    creator_temp_id = _creds_module.get_optional_config("TIKTOK_CREATOR_TEMP_ID")
+    if not campaign_id or not product_id or not creator_temp_id:
+        logger.warning(
+            "[tiktok] TIKTOK_CAMPAIGN_ID/PRODUCT_ID/CREATOR_TEMP_ID 未全部配置，"
+            "affiliate_sample_status 跳过"
+        )
+        return []
+    path = (
+        f"/affiliate_partner/202508/campaigns/{campaign_id}"
+        f"/products/{product_id}"
+        f"/creator/{creator_temp_id}"
+        f"/content/statistics/sample/status"
+    )
+    params = _build_signed_params(app_key, app_secret, path)
+    logger.info("[tiktok] 获取联盟寄样状态 ...")
+    resp = requests.get(
+        f"{BASE_URL}{path}",
+        params=params,
+        headers=_api_headers(),
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(
+            f"[tiktok] 联盟寄样状态查询失败，code={data.get('code')}，message={data.get('message')}"
+        )
+    resp_data = data.get("data") or {}
+    records = _extract_list_from_data(resp_data)
+    if not records:
+        logger.warning("[tiktok] 联盟寄样状态返回空，字段发现将跳过")
+        return []
+    logger.info("[tiktok] 获取联盟寄样状态 ... 成功")
+    return records
+
+
+def _fetch_affiliate_campaign_performance(app_key: str, app_secret: str) -> List[Dict]:
+    """GET /affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/performance
+    — 联盟活动履约状态。
+
+    需在 .env 中配置 TIKTOK_CAMPAIGN_ID、TIKTOK_PRODUCT_ID；未配置则返回空列表。
+    """
+    campaign_id = _creds_module.get_optional_config("TIKTOK_CAMPAIGN_ID")
+    product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
+    if not campaign_id or not product_id:
+        logger.warning(
+            "[tiktok] TIKTOK_CAMPAIGN_ID/PRODUCT_ID 未配置，affiliate_campaign_performance 跳过"
+        )
+        return []
+    path = f"/affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/performance"
+    params = _build_signed_params(app_key, app_secret, path)
+    logger.info("[tiktok] 获取联盟活动履约状态 ...")
+    resp = requests.get(
+        f"{BASE_URL}{path}",
+        params=params,
+        headers=_api_headers(),
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(
+            f"[tiktok] 联盟活动履约状态查询失败，code={data.get('code')}，message={data.get('message')}"
+        )
+    resp_data = data.get("data") or {}
+    records = _extract_list_from_data(resp_data)
+    if not records:
+        logger.warning("[tiktok] 联盟活动履约状态返回空，字段发现将跳过")
+        return []
+    logger.info("[tiktok] 获取联盟活动履约状态 ... 成功")
+    return records
+
+
+# ---- 路由分发表 ----
+
+_ROUTE_HANDLERS = {
+    "shop_product_performance": _fetch_shop_product_performance,
+    "affiliate_creator_orders": _fetch_affiliate_creator_orders,
+    "video_performances": _fetch_video_performances,
+    "return_refund": _fetch_return_refund,
+    "affiliate_sample_status": _fetch_affiliate_sample_status,
+    "affiliate_campaign_performance": _fetch_affiliate_campaign_performance,
+}
 
 
 # ---- 公开接口（必须严格遵守三函数契约）----
@@ -132,10 +405,9 @@ def authenticate() -> bool:
     """验证 TikTok Shop 凭证是否有效。
 
     流程：
-    1. 从 get_credentials() 获取凭证
-    2. 用 refresh_token 换取 access_token
-    3. 用 access_token 获取 shop_cipher（验证可用性）
-    4. 将 access_token 和 shop_cipher 存入模块级变量供 fetch_sample 使用
+    1. 从 get_credentials() 获取 TIKTOK_APP_KEY 和 TIKTOK_APP_SECRET
+    2. 通过 DTC 两步获取 TikTok access_token 和 shop_cipher
+    3. 将 access_token 和 shop_cipher 存入模块级变量供 fetch_sample 使用
 
     Returns:
         True: 认证成功
@@ -145,15 +417,12 @@ def authenticate() -> bool:
     try:
         creds = _creds_module.get_credentials()
         logger.info("[tiktok] 认证 ...")
-
         _access_token, _shop_cipher = _get_tiktok_auth_via_dtc(
             creds["TIKTOK_APP_KEY"],
             creds["TIKTOK_APP_SECRET"],
         )
-
         logger.info("[tiktok] 认证 ... 成功")
         return True
-
     except Exception as e:
         logger.error(f"[tiktok] 认证 ... 失败：{e}")
         _access_token = None
@@ -162,74 +431,44 @@ def authenticate() -> bool:
 
 
 def fetch_sample(table_name: Optional[str] = None) -> List[Dict]:
-    """抓取 TikTok Shop 退款样本数据（用于验证 API 连通性和字段发现）。
+    """抓取 TikTok Shop 指定接口的样本数据。
 
-    调用 /return_refund/202602/returns/search，返回退款记录。
+    根据 table_name 路由到对应接口。table_name=None 时使用默认表（return_refund）。
+    ad_spend 接口暂无对应 Shop API，直接返回空列表并记录警告。
+    含动态路径参数的接口若 .env 未配置对应 ID，同样返回空列表。
 
-    注意：
-    - /affiliate_creator/202410/orders/search（达人订单数据）需要达人级别 token，
-      不支持 DTC 提供的店铺 token，因此改用退款端点验证连通性。
-    - 退款端点需要 shop_cipher 在 query params 中，且签名必须包含请求 body。
-    - 若当前店铺无退款历史，返回空列表（字段发现将跳过，但认证/连通性验证仍通过）。
-
-    table_name 参数忽略（TikTok 只使用一个样本端点）。
+    Args:
+        table_name: 接口名称，见 TABLES 常量；None 时使用 _DEFAULT_TABLE。
 
     Returns:
-        list[dict]: 原始 API 响应中的退款记录列表，无数据时返回空列表
+        list[dict]: 原始 API 响应中的记录列表，无数据时返回空列表
 
     Raises:
         RuntimeError: 认证未完成或 API 调用失败
+        ValueError: table_name 不在 TABLES 中
     """
     if not _access_token or not _shop_cipher:
         raise RuntimeError("[tiktok] fetch_sample 调用前必须先成功调用 authenticate()")
 
-    creds = _creds_module.get_credentials()
-    app_key = creds["TIKTOK_APP_KEY"]
-    app_secret = creds["TIKTOK_APP_SECRET"]
+    table = table_name or _DEFAULT_TABLE
 
-    path = "/return_refund/202602/returns/search"
-    payload: dict = {"page_size": 20}
-
-    # return_refund 端点需要 shop_cipher 在 query params 中
-    params: dict = {
-        "app_key": app_key,
-        "shop_cipher": _shop_cipher,
-        "timestamp": str(int(time.time()) - 60),
-    }
-    # 签名必须包含 body（使用 json.dumps 默认格式，与 requests 发送格式一致）
-    params["sign"] = _sign_request(app_secret, path, params, payload)
-
-    logger.info("[tiktok] 获取退款样本 ...")
-    resp = requests.post(
-        f"{BASE_URL}{path}",
-        params=params,
-        json=payload,
-        headers={"x-tts-access-token": _access_token, "Content-Type": "application/json"},
-        timeout=REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-
-    if data.get("code") != 0:
-        raise RuntimeError(
-            f"[tiktok] 退款查询失败，code={data.get('code')}，message={data.get('message')}"
-        )
-
-    resp_data = data.get("data") or {}
-    records = resp_data.get("returns") or resp_data.get("return_list", [])
-    if not records:
-        logger.warning("[tiktok] 退款查询返回空列表（当前店铺无退款历史），字段发现将跳过")
+    if table == "ad_spend":
+        logger.warning("[tiktok] 广告花费接口暂无 Shop API 支持，跳过")
         return []
 
-    logger.info(f"[tiktok] 获取退款样本 ... 成功（{len(records)} 条记录）")
-    return records
+    handler = _ROUTE_HANDLERS.get(table)
+    if handler is None:
+        raise ValueError(f"[tiktok] 未知 table_name: {table}，有效值：{TABLES}")
+
+    creds = _creds_module.get_credentials()
+    return handler(creds["TIKTOK_APP_KEY"], creds["TIKTOK_APP_SECRET"])
 
 
 def extract_fields(sample: List[Dict]) -> List[Dict]:
-    """从订单样本中提取字段信息。
+    """从样本记录中提取字段信息。
 
-    从第一条订单记录中提取所有顶层字段，推断数据类型（string/number/boolean/array/object/null）。
-    嵌套结构（如 recipient_address、skus）作为整体字段返回，不展开内层键。
+    从第一条记录中提取所有顶层字段，推断数据类型（string/number/boolean/array/object/null）。
+    嵌套结构（如 address、skus）作为整体字段返回，不展开内层键。
 
     Returns:
         list[dict]: 标准 FieldInfo 格式列表，每项含 field_name/data_type/sample_value/nullable
@@ -240,7 +479,7 @@ def extract_fields(sample: List[Dict]) -> List[Dict]:
     first_record = sample[0]
     fields: List[Dict] = []
 
-    def _infer_type(value) -> str:
+    def _infer_type(value: object) -> str:
         if value is None:
             return "null"
         if isinstance(value, bool):

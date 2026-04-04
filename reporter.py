@@ -1,10 +1,13 @@
 """报告渲染器：负责生成 raw 字段发现报告和 validation 人工标注模板。
 
 职责：
-- write_raw_report(): 每次运行完全覆盖 reports/{source}-raw.md
+- write_raw_report(): 写入或追加 reports/{source}-raw.md 的接口 Section
 - init_validation_report(): 仅首次创建 reports/{source}-validation.md，后续不覆盖
 
 不处理凭证，不调用 source 模块，不包含调度逻辑（调度由 validate.py 负责）。
+
+多接口数据源（tiktok、triplewhale）通过 append=True 参数在同一文件内追加 Section，
+第一个接口传 append=False（覆盖写入，含报告头），后续接口传 append=True（追加新 Section）。
 """
 
 from datetime import datetime
@@ -71,13 +74,28 @@ def _escape_cell(value: object) -> str:
     return str(value).replace("|", "\\|")
 
 
+def _render_field_table(fields: List[Dict]) -> List[str]:
+    """渲染字段表格行（不含表头）。"""
+    lines: List[str] = []
+    for field in fields:
+        field_name = _escape_cell(field.get("field_name", ""))
+        data_type = _escape_cell(field.get("data_type", ""))
+        sample_value = _escape_cell(field.get("sample_value"))
+        nullable = "是" if field.get("nullable") else "否"
+        lines.append(f"| {field_name} | {data_type} | {sample_value} | {nullable} |")
+    return lines
+
+
 def _render_raw_report(
     source_name: str,
     fields: List[Dict],
     table_name: Optional[str],
     sample_count: int,
 ) -> str:
-    """渲染 raw 报告 Markdown 内容。"""
+    """渲染完整 raw 报告 Markdown 内容（含报告头和需求字段区块）。
+
+    用于第一次写入（覆盖模式）。
+    """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     table_display = table_name if table_name else "N/A"
 
@@ -86,22 +104,19 @@ def _render_raw_report(
         f"# {source_name} 字段验证报告（Raw）",
         "",
         f"**生成时间：** {now}",
-        f"**数据表：** {table_display}",
-        f"**样本记录数：** {sample_count}",
         "",
-        "## 实际返回字段",
+    ]
+
+    # --- 接口 Section ---
+    lines += [
+        f"## 接口：{table_display}",
+        "",
+        f"**样本记录数：** {sample_count}",
         "",
         "| 字段名 | 类型 | 示例值 | 可空 |",
         "|--------|------|--------|------|",
     ]
-
-    # --- 字段表格行 ---
-    for field in fields:
-        field_name = _escape_cell(field.get("field_name", ""))
-        data_type = _escape_cell(field.get("data_type", ""))
-        sample_value = _escape_cell(field.get("sample_value"))
-        nullable = "是" if field.get("nullable") else "否"
-        lines.append(f"| {field_name} | {data_type} | {sample_value} | {nullable} |")
+    lines += _render_field_table(fields)
 
     # --- 需求字段区块 ---
     lines += [
@@ -111,7 +126,6 @@ def _render_raw_report(
         "| 需求字段（中文） | 报表 | 对照结果 |",
         "|----------------|------|---------|",
     ]
-
     source_fields = _get_source_requirements(source_name)
     if source_fields:
         for sf in source_fields:
@@ -120,6 +134,34 @@ def _render_raw_report(
         lines.append("| （暂无配置的需求字段） | — | — |")
 
     lines.append("")  # 文件末尾空行
+    return "\n".join(lines)
+
+
+def _render_raw_section(
+    fields: List[Dict],
+    table_name: str,
+    sample_count: int,
+) -> str:
+    """渲染单个接口的追加 Section Markdown 内容（不含报告头和需求字段区块）。
+
+    用于多接口数据源追加写入（append 模式）。
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines: List[str] = [
+        "",
+        "---",
+        "",
+        f"## 接口：{table_name}",
+        "",
+        f"**生成时间：** {now}",
+        "",
+        f"**样本记录数：** {sample_count}",
+        "",
+        "| 字段名 | 类型 | 示例值 | 可空 |",
+        "|--------|------|--------|------|",
+    ]
+    lines += _render_field_table(fields)
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -170,20 +212,30 @@ def write_raw_report(
     fields: List[Dict],
     table_name: Optional[str],
     sample_count: int,
+    append: bool = False,
 ) -> None:
-    """生成（或覆盖）reports/{source_name}-raw.md。
+    """写入 reports/{source_name}-raw.md。
 
     Args:
         source_name: 数据源名称，与 sources/ 目录下模块名对应（不含 .py）。
         fields: FieldInfo 列表，每项含 field_name / data_type / sample_value / nullable。
-        table_name: 数据表名（SQL 数据源），非 SQL 数据源传 None。
+        table_name: 数据表名（接口名），非多表数据源传 None。
         sample_count: 本次抓取的样本记录数。
+        append: False（默认）= 覆盖写入完整报告（含头部和需求字段区块）；
+                True = 追加新接口 Section（不含头部，用于多接口数据源的后续调用）。
     """
     _ensure_reports_dir()
-    content = _render_raw_report(source_name, fields, table_name, sample_count)
     path = REPORTS_DIR / f"{source_name}-raw.md"
-    path.write_text(content, encoding="utf-8")
-    logger.info(f"[reporter] {source_name} raw 报告已写入 {path}")
+    if append:
+        effective_table = table_name or "N/A"
+        section = _render_raw_section(fields, effective_table, sample_count)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(section)
+        logger.info(f"[reporter] {source_name}/{effective_table} section 已追加到 {path}")
+    else:
+        content = _render_raw_report(source_name, fields, table_name, sample_count)
+        path.write_text(content, encoding="utf-8")
+        logger.info(f"[reporter] {source_name} raw 报告已写入 {path}")
 
 
 def init_validation_report(source_name: str) -> None:

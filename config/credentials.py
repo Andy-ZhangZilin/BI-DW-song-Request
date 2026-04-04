@@ -3,8 +3,9 @@
 所有 source 模块必须从此模块导入凭证，禁止直接调用 os.getenv()。
 
 公开接口：
-    get_credentials() -> dict[str, str]  — 加载并校验所有必需凭证
-    mask_credential(value: str) -> str   — 日志脱敏唯一入口，凭证显示前 4 位 + ****
+    get_credentials() -> dict[str, str]      — 加载并校验所有必需凭证
+    get_optional_config(key, default) -> str — 读取可选配置项（不在必需列表中）
+    mask_credential(value: str) -> str       — 日志脱敏唯一入口，凭证显示前 4 位 + ****
 """
 import os
 from pathlib import Path
@@ -53,6 +54,23 @@ def get_credentials() -> Dict[str, str]:
         raise ValueError(f"缺少以下必需凭证：{', '.join(missing)}")
 
     return creds
+
+
+def get_optional_config(key: str, default: str = "") -> str:
+    """读取可选配置项（.env 中存在但不在必需凭证列表中的值）。
+
+    与 get_credentials() 不同，此函数不校验、不抛异常，key 不存在时返回 default。
+    source 模块需要读取可选路径参数（如 TIKTOK_PRODUCT_ID）时使用此函数，
+    而非直接调用 os.getenv()。
+
+    Args:
+        key: 环境变量名
+        default: 键不存在或值为空时返回的默认值
+
+    Returns:
+        环境变量的值，或 default
+    """
+    return os.getenv(key, default)
 
 
 def mask_credential(value: str) -> str:

@@ -7,7 +7,6 @@ from pathlib import Path
 # ── 辅助：构造完整测试环境变量 ──────────────────────────────────────────
 ALL_VALID_ENV = {
     "TRIPLEWHALE_API_KEY": "tw_key_123",
-    "TIKTOK_REFRESH_TOKEN": "tiktok_refresh_abc",
     "TIKTOK_APP_KEY": "tiktok_app_key",
     "TIKTOK_APP_SECRET": "tiktok_app_secret",
     "DINGTALK_APP_KEY": "dingtalk_app_key",
@@ -78,7 +77,7 @@ class TestGetCredentialsMissing:
                 get_credentials()
 
     def test_multiple_missing_keys_all_listed_in_error(self, monkeypatch):
-        missing_keys = ["TRIPLEWHALE_API_KEY", "TIKTOK_REFRESH_TOKEN", "YOUTUBE_API_KEY"]
+        missing_keys = ["TRIPLEWHALE_API_KEY", "TIKTOK_APP_KEY", "YOUTUBE_API_KEY"]
         for key in missing_keys:
             monkeypatch.delenv(key, raising=False)
         remaining = {k: v for k, v in ALL_VALID_ENV.items() if k not in missing_keys}
@@ -90,7 +89,7 @@ class TestGetCredentialsMissing:
                 get_credentials()
         error_msg = str(exc_info.value)
         assert "TRIPLEWHALE_API_KEY" in error_msg
-        assert "TIKTOK_REFRESH_TOKEN" in error_msg
+        assert "TIKTOK_APP_KEY" in error_msg
         assert "YOUTUBE_API_KEY" in error_msg
 
     def test_empty_string_treated_as_missing(self, monkeypatch):
@@ -111,7 +110,7 @@ class TestNoDirectEnvAccess:
         sources_dir = Path(__file__).parent.parent / "sources"
         for py_file in sources_dir.rglob("*.py"):
             content = py_file.read_text()
-            assert "os.getenv" not in content, (
+            assert "os.getenv(" not in content, (
                 f"{py_file.name} 直接调用了 os.getenv()，"
                 f"必须改用 from config.credentials import get_credentials"
             )

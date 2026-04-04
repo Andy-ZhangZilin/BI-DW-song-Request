@@ -160,8 +160,8 @@ class TestEnvExample:
     def test_has_triplewhale_key(self):
         assert "TRIPLEWHALE_API_KEY" in self._read_env_example()
 
-    def test_has_tiktok_refresh_token(self):
-        assert "TIKTOK_REFRESH_TOKEN" in self._read_env_example()
+    def test_has_tiktok_app_key(self):
+        assert "TIKTOK_APP_KEY" in self._read_env_example()
 
     def test_has_dingtalk_keys(self):
         content = self._read_env_example()
