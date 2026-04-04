@@ -186,7 +186,7 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
         "shop_cipher": _shop_cipher,
         "timestamp": str(int(time.time()) - 60),
     }
-    params["sign"] = _sign_request(app_secret, path, params, payload)
+    params["sign"] = _sign_request(app_secret, path, params)
 
     logger.info("[tiktok] 获取订单样本 ...")
     resp = requests.post(
