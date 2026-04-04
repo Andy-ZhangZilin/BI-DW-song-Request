@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import logging
 import time
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -83,7 +83,7 @@ def _get_dtc_token() -> str:
     return token
 
 
-def _get_tiktok_auth_via_dtc(app_key: str, app_secret: str) -> tuple[str, str]:
+def _get_tiktok_auth_via_dtc(app_key: str, app_secret: str) -> Tuple[str, str]:
     """通过 DTC 获取 TikTok 店铺的 access_token 和 cipher。
 
     返回包含 Piscifun 品牌的店铺认证信息；若无匹配则使用第一条。
@@ -161,7 +161,7 @@ def authenticate() -> bool:
         return False
 
 
-def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
+def fetch_sample(table_name: Optional[str] = None) -> List[Dict]:
     """抓取 TikTok Shop 退款样本数据（用于验证 API 连通性和字段发现）。
 
     调用 /return_refund/202602/returns/search，返回退款记录。
@@ -225,7 +225,7 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     return records
 
 
-def extract_fields(sample: list[dict]) -> list[dict]:
+def extract_fields(sample: List[Dict]) -> List[Dict]:
     """从订单样本中提取字段信息。
 
     从第一条订单记录中提取所有顶层字段，推断数据类型（string/number/boolean/array/object/null）。
@@ -238,7 +238,7 @@ def extract_fields(sample: list[dict]) -> list[dict]:
         return []
 
     first_record = sample[0]
-    fields: list[dict] = []
+    fields: List[Dict] = []
 
     def _infer_type(value) -> str:
         if value is None:

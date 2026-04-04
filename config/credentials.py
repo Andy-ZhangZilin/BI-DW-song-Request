@@ -8,13 +8,13 @@
 """
 import os
 from pathlib import Path
+from typing import Dict, List
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
-_REQUIRED_KEYS: list[str] = [
+_REQUIRED_KEYS: List[str] = [
     "TRIPLEWHALE_API_KEY",
-    "TIKTOK_REFRESH_TOKEN",
     "TIKTOK_APP_KEY",
     "TIKTOK_APP_SECRET",
     "DINGTALK_APP_KEY",
@@ -30,7 +30,7 @@ _REQUIRED_KEYS: list[str] = [
 ]
 
 
-def get_credentials() -> dict[str, str]:
+def get_credentials() -> Dict[str, str]:
     """加载并校验所有必需凭证，缺失时抛出 ValueError。
 
     Returns:
@@ -39,8 +39,8 @@ def get_credentials() -> dict[str, str]:
     Raises:
         ValueError: 当一个或多个必需凭证键缺失时
     """
-    creds: dict[str, str] = {}
-    missing: list[str] = []
+    creds: Dict[str, str] = {}
+    missing: List[str] = []
 
     for key in _REQUIRED_KEYS:
         value = os.getenv(key)
