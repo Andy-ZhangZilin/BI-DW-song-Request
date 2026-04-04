@@ -42,16 +42,19 @@ def _sign_request(app_secret: str, path: str, params: dict, body: Optional[dict]
     签名步骤（与 Java TiktokReqUtil.generateTtSign 完全一致）：
     1. 将参数（不含 sign 本身）按 key 字典序升序排列，拼接 key+value
     2. 在排好序的字符串前面加 path
-    3. 若有 body，追加 body 的 JSON 字符串
+    3. 若有 body，追加 body 的 JSON 字符串（必须与 requests 实际发送的格式完全一致）
     4. 首尾各拼接 app_secret：app_secret + (path+params[+body]) + app_secret
     5. 用 HMAC-SHA256（密钥 = app_secret）对上述字符串签名
     6. 取十六进制摘要（小写）
+
+    注意：body 序列化使用 json.dumps 默认格式（带空格分隔符），与
+    requests.post(json=body) 实际发送的字节流保持一致，不能用紧凑格式。
     """
     import json as _json
     sorted_params = "".join(f"{k}{v}" for k, v in sorted(params.items()))
     sign_input = path + sorted_params
     if body:
-        sign_input += _json.dumps(body, separators=(",", ":"))
+        sign_input += _json.dumps(body)
     sign_str = f"{app_secret}{sign_input}{app_secret}"
     signature = hmac.new(
         app_secret.encode("utf-8"),
@@ -159,13 +162,20 @@ def authenticate() -> bool:
 
 
 def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
-    """抓取 TikTok Shop 达人订单样本数据。
+    """抓取 TikTok Shop 退款样本数据（用于验证 API 连通性和字段发现）。
 
-    调用 /affiliate_creator/202410/orders/search，返回至少一条订单记录。
-    table_name 参数忽略（TikTok 只有一个端点）。
+    调用 /return_refund/202602/returns/search，返回退款记录。
+
+    注意：
+    - /affiliate_creator/202410/orders/search（达人订单数据）需要达人级别 token，
+      不支持 DTC 提供的店铺 token，因此改用退款端点验证连通性。
+    - 退款端点需要 shop_cipher 在 query params 中，且签名必须包含请求 body。
+    - 若当前店铺无退款历史，返回空列表（字段发现将跳过，但认证/连通性验证仍通过）。
+
+    table_name 参数忽略（TikTok 只使用一个样本端点）。
 
     Returns:
-        list[dict]: 原始 API 响应中的订单记录列表
+        list[dict]: 原始 API 响应中的退款记录列表，无数据时返回空列表
 
     Raises:
         RuntimeError: 认证未完成或 API 调用失败
@@ -177,18 +187,19 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     app_key = creds["TIKTOK_APP_KEY"]
     app_secret = creds["TIKTOK_APP_SECRET"]
 
-    path = "/affiliate_creator/202410/orders/search"
-    payload: dict = {"page_size": 1}
+    path = "/return_refund/202602/returns/search"
+    payload: dict = {"page_size": 20}
 
-    # query params 不含 access_token（access_token 放 header）
+    # return_refund 端点需要 shop_cipher 在 query params 中
     params: dict = {
         "app_key": app_key,
         "shop_cipher": _shop_cipher,
         "timestamp": str(int(time.time()) - 60),
     }
-    params["sign"] = _sign_request(app_secret, path, params)
+    # 签名必须包含 body（使用 json.dumps 默认格式，与 requests 发送格式一致）
+    params["sign"] = _sign_request(app_secret, path, params, payload)
 
-    logger.info("[tiktok] 获取订单样本 ...")
+    logger.info("[tiktok] 获取退款样本 ...")
     resp = requests.post(
         f"{BASE_URL}{path}",
         params=params,
@@ -201,17 +212,17 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
 
     if data.get("code") != 0:
         raise RuntimeError(
-            f"[tiktok] 订单查询失败，code={data.get('code')}，message={data.get('message')}"
+            f"[tiktok] 退款查询失败，code={data.get('code')}，message={data.get('message')}"
         )
 
-    # v2 API 响应中订单列表字段名为 orders
     resp_data = data.get("data") or {}
-    orders = resp_data.get("orders") or resp_data.get("order_list", [])
-    if not orders:
-        raise RuntimeError("[tiktok] 订单查询返回空列表，无法完成字段发现")
+    records = resp_data.get("returns") or resp_data.get("return_list", [])
+    if not records:
+        logger.warning("[tiktok] 退款查询返回空列表（当前店铺无退款历史），字段发现将跳过")
+        return []
 
-    logger.info(f"[tiktok] 获取订单样本 ... 成功（{len(orders)} 条记录）")
-    return orders
+    logger.info(f"[tiktok] 获取退款样本 ... 成功（{len(records)} 条记录）")
+    return records
 
 
 def extract_fields(sample: list[dict]) -> list[dict]:
