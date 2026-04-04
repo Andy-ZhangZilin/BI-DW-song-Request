@@ -11,7 +11,7 @@
 import argparse
 import logging
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import reporter
 from config.credentials import get_credentials
@@ -25,6 +25,7 @@ from sources import (
     triplewhale,
     youtube,
 )
+from sources.tiktok import TABLES as TIKTOK_TABLES
 from sources.triplewhale import TABLES as TRIPLEWHALE_TABLES
 
 logging.basicConfig(
@@ -54,15 +55,16 @@ SOURCES: Dict[str, Any] = {
 # 私有辅助函数
 # ---------------------------------------------------------------------------
 
-def _run_source(source_name: str, module: Any) -> bool:
+def _run_source(source_name: str, module: Any, table: Optional[str] = None) -> bool:
     """执行单个数据源的完整验证流程，返回是否成功。
 
     流程：authenticate → fetch_sample → extract_fields → write_raw_report → init_validation_report
-    triplewhale 特殊处理：循环执行 4 张表。
+    triplewhale / tiktok 多表路由：循环执行各张表，后续表追加 Section（append=True）。
 
     Args:
         source_name: 数据源名称，与 SOURCES 注册表 key 一致。
         module: 对应的 source 模块对象。
+        table: 可选，指定单张表名；为 None 时执行全部表（仅对多表数据源有效）。
 
     Returns:
         True 表示全部步骤成功；False 表示认证失败或捕获到异常。
@@ -76,13 +78,28 @@ def _run_source(source_name: str, module: Any) -> bool:
         logger.info(f"[{source_name}] 认证 ... 成功")
 
         if source_name == "triplewhale":
-            # triplewhale 多表路由：每张表独立执行一遍完整流程
-            for table_name in TRIPLEWHALE_TABLES:
+            # triplewhale 多表路由：每张表独立抓样本，后续追加 Section
+            tables = [table] if table else TRIPLEWHALE_TABLES
+            for i, table_name in enumerate(tables):
                 logger.info(f"[{source_name}] 获取 {table_name} 样本 ...")
                 sample = module.fetch_sample(table_name)
                 fields = module.extract_fields(sample)
-                reporter.write_raw_report(source_name, fields, table_name, len(sample))
+                reporter.write_raw_report(
+                    source_name, fields, table_name, len(sample), append=(i > 0)
+                )
                 logger.info(f"[{source_name}] {table_name} ... 成功")
+            reporter.init_validation_report(source_name)
+        elif source_name == "tiktok":
+            # tiktok 多接口路由：每个接口独立抓样本，后续追加 Section
+            tables = [table] if table else TIKTOK_TABLES
+            for i, table_name in enumerate(tables):
+                logger.info(f"[{source_name}] 获取 {table_name} 样本 ...")
+                sample = module.fetch_sample(table_name)
+                fields = module.extract_fields(sample)
+                reporter.write_raw_report(
+                    source_name, fields, table_name, len(sample), append=(i > 0)
+                )
+                logger.info(f"[{source_name}] {table_name} ... 完成")
             reporter.init_validation_report(source_name)
         else:
             logger.info(f"[{source_name}] 获取样本 ...")
@@ -130,6 +147,16 @@ def main() -> None:
             f"执行顺序：{', '.join(SOURCES.keys())}"
         ),
     )
+    parser.add_argument(
+        "--table",
+        type=str,
+        metavar="TABLE",
+        default=None,
+        help=(
+            "指定数据表名，仅对 triplewhale 和 tiktok 有效。"
+            "例：--source tiktok --table return_refund"
+        ),
+    )
     args = parser.parse_args()
 
     if not args.source and not args.all:
@@ -157,7 +184,7 @@ def main() -> None:
     # --- 调度循环 ---
     results: Dict[str, str] = {}
     for source_name, module in sources_to_run.items():
-        success = _run_source(source_name, module)
+        success = _run_source(source_name, module, table=args.table)
         results[source_name] = "成功" if success else "失败"
 
     # --- 汇总输出 ---

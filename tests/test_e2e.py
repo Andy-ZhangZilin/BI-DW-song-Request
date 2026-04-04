@@ -125,7 +125,7 @@ class TestFullPipeline:
         raw_content = (reports_dir / "youtube-raw.md").read_text(encoding="utf-8")
         assert "videoId" in raw_content
         assert "dQw4w9WgXcQ" in raw_content
-        assert "实际返回字段" in raw_content
+        assert "## 接口：" in raw_content
 
     def test_triplewhale_generates_report_with_table_name(self, tmp_path: Path, monkeypatch) -> None:
         """triplewhale 多表路由：raw.md 包含表名信息"""

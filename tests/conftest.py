@@ -5,7 +5,6 @@ from unittest.mock import patch, MagicMock
 
 TEST_CREDENTIALS: dict[str, str] = {
     "TRIPLEWHALE_API_KEY": "test_tw_key",
-    "TIKTOK_REFRESH_TOKEN": "test_tiktok_refresh",
     "TIKTOK_APP_KEY": "test_tiktok_app_key",
     "TIKTOK_APP_SECRET": "test_tiktok_app_secret",
     "DINGTALK_APP_KEY": "test_dingtalk_app_key",

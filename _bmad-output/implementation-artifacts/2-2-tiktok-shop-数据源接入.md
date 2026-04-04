@@ -628,6 +628,24 @@ outdoor-data-validator/
 
 ## Review Findings
 
+### Correct Course 实现审查（2026-04-04 — DTC 中间层 + 6 接口路由）
+
+- [x] [Review][Patch] `_sign_request` 中 `if body:` 应为 `if body is not None:` [sources/tiktok.py:86] — fixed，空 dict `{}` 为 falsy 会被错误跳过签名
+- [x] [Review][Patch] `_get_tiktok_auth_via_dtc` 中 `data.get("data", [])` 在 key 存在但值为 None 时返回 None 而非 `[]` [sources/tiktok.py:136] — fixed，改为 `data.get("data") or []`
+- [x] [Review][Patch] `_fetch_return_refund` 中 `or` 逻辑使空 `returns=[]` 错误回退到 `return_list` [sources/tiktok.py:213] — fixed，改用 key 存在性检查
+- [x] [Review][Patch] `_render_raw_section` 元数据行间缺少空行导致 Markdown 渲染不一致 [reporter.py:155-157] — fixed
+- [x] [Review][Defer] `_DTC_APP_SECRET` 硬编码在源码 [sources/tiktok.py:42-43] — deferred，DTC 凭证为 finance-online-v1 基础设施固定常量，非用户凭证；公司内部工具可接受，后续可按需移至 .env
+- [x] [Review][Defer] `_build_signed_params` 直接读取全局 `_shop_cipher` 无 None 防护 [sources/tiktok.py:158] — deferred，fetch_sample() 公开接口已有防护，私有函数内部调用约定
+- [x] [Review][Defer] `shops[0]` 回退即使字段缺失也不扫描其他店铺 [sources/tiktok.py:139] — deferred，后续验证 `if not access_token or not cipher` 会抛出错误，可接受
+- [x] [Review][Defer] `_extract_list_from_data` 跳过空列表可能掩盖有效空响应 [sources/tiktok.py:183] — deferred，by design 用于字段发现，空响应无字段可发现
+- [x] [Review][Defer] `extract_fields` 只检查第一条记录的 nullable 和字段集 [sources/tiktok.py:479] — deferred，page_size 设计为小样本，与原实现一致
+- [x] [Review][Defer] `write_raw_report(append=True)` 若文件不存在会静默创建无头部文件 [reporter.py:231] — deferred，当前所有调用点均以 `append=False` 首次写入，调用约定已保证
+- [x] [Review][Defer] 全局状态 `_access_token`/`_shop_cipher` 非线程安全 — deferred，单线程 CLI 工具设计，与原架构一致
+- [x] [Review][Defer] `validate.py --table` 配合 `--all` 对非多表数据源静默忽略 [validate.py:187] — deferred，文档说明仅对 tiktok/triplewhale 有效，设计限制
+- [x] [Review][Defer] `fetch_sample` 每次重新调用 `get_credentials()` [sources/tiktok.py:463] — deferred，轻量级函数调用，不影响正确性
+
+### 初始实现审查（原 Story 2.2 v1）
+
 - [x] [Review][Patch] extract_fields 文档字符串声称"展平一级嵌套字段"但实现仅提取顶层字段 [sources/tiktok.py:228] — fixed
 - [x] [Review][Defer] 模块级全局变量 _access_token/_shop_cipher 非线程安全 [sources/tiktok.py:26-27] — deferred, 架构层设计决策（spec 明确定义），单线程 CLI 工具场景不影响正确性
 - [x] [Review][Defer] nullable 推断仅基于 sample[0] 第一条记录 [sources/tiktok.py:256] — deferred, page_size=1 场景 by design，单记录样本字段发现属预期行为
