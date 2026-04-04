@@ -1,7 +1,9 @@
 """TikTok Shop 数据源接入模块
 
-认证流程：refresh_token → access_token（每次重新获取，不缓存）
-         → shop_cipher（通过 /api/shops/get_authorized_shop 自动获取）
+认证流程（通过 DTC 中间层）：
+  1. 调用 DTC getAccessToken → dtc_access_token
+  2. 用 dtc_access_token 调用 DTC getTiktokShopSecret → TikTok access_token + cipher
+  3. 用 TikTok access_token + cipher 调用 TikTok Open API
 """
 import hashlib
 import hmac
@@ -18,6 +20,12 @@ logger = logging.getLogger(__name__)
 # TikTok Shop Open Platform API 基础 URL
 BASE_URL = "https://open-api.tiktokglobalshop.com"
 
+# DTC 中间层 API（华青 DTC 系统，管理 TikTok 店铺 OAuth 令牌）
+_DTC_ACCESS_TOKEN_URL = "https://api.dtc.huaqing.run/api/hub/token/getAccessToken"
+_DTC_SHOP_SECRET_URL = "https://api.dtc.huaqing.run/api/hub/common/getTiktokShopSecret"
+_DTC_APP_ID = "finance-online-v1"
+_DTC_APP_SECRET = "CBW3rpFfeobg85uu"
+
 # HTTP 超时（架构规范：30s）
 REQUEST_TIMEOUT = 30
 
@@ -28,18 +36,23 @@ _shop_cipher: Optional[str] = None
 
 # ---- 私有函数 ----
 
-def _sign_request(app_secret: str, params: dict) -> str:
-    """TikTok Shop API HmacSHA256 签名算法。
+def _sign_request(app_secret: str, path: str, params: dict, body: Optional[dict] = None) -> str:
+    """TikTok Shop API HmacSHA256 签名算法（含 path）。
 
-    签名步骤（来源：TikTok Shop Open Platform 官方文档）：
-    1. 将参数（不含 sign 本身）按 key 字典序升序排列
-    2. 拼接所有 key+value 为字符串
-    3. 首尾各拼接 app_secret：app_secret + sorted_params + app_secret
-    4. 用 HMAC-SHA256（密钥 = app_secret）对上述字符串签名
-    5. 取十六进制摘要（小写）
+    签名步骤（与 Java TiktokReqUtil.generateTtSign 完全一致）：
+    1. 将参数（不含 sign 本身）按 key 字典序升序排列，拼接 key+value
+    2. 在排好序的字符串前面加 path
+    3. 若有 body，追加 body 的 JSON 字符串
+    4. 首尾各拼接 app_secret：app_secret + (path+params[+body]) + app_secret
+    5. 用 HMAC-SHA256（密钥 = app_secret）对上述字符串签名
+    6. 取十六进制摘要（小写）
     """
+    import json as _json
     sorted_params = "".join(f"{k}{v}" for k, v in sorted(params.items()))
-    sign_str = f"{app_secret}{sorted_params}{app_secret}"
+    sign_input = path + sorted_params
+    if body:
+        sign_input += _json.dumps(body, separators=(",", ":"))
+    sign_str = f"{app_secret}{sign_input}{app_secret}"
     signature = hmac.new(
         app_secret.encode("utf-8"),
         sign_str.encode("utf-8"),
@@ -48,85 +61,66 @@ def _sign_request(app_secret: str, params: dict) -> str:
     return signature
 
 
-def _refresh_access_token(creds: dict) -> str:
-    """用 refresh_token 换取新的 access_token（每次调用均重新获取，不缓存）。
+def _get_dtc_token() -> str:
+    """通过 DTC 接口获取 DTC access_token。
 
-    注：时间戳不需要偏移，直接使用当前 Unix 时间戳（秒级）。
-    TikTok 服务端允许 ±300 秒的时间差（架构备注：初始架构提到"时间戳略靠前偏移"，
-    经验证直接使用当前时间戳即可，无需强制偏移）。
+    DTC 是华青内部中间层，统一管理各平台 OAuth 令牌。
 
     Raises:
-        RuntimeError: 当 API 返回非 0 code 或响应中缺少 access_token 时
+        RuntimeError: 当 DTC 接口返回失败或缺少 access_token 时
     """
-    app_key = creds["TIKTOK_APP_KEY"]
-    app_secret = creds["TIKTOK_APP_SECRET"]
-    refresh_token = creds["TIKTOK_REFRESH_TOKEN"]
+    params = {"app_id": _DTC_APP_ID, "app_secret": _DTC_APP_SECRET}
+    resp = requests.get(_DTC_ACCESS_TOKEN_URL, params=params, timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    data = resp.json()
 
-    params: dict = {
-        "app_key": app_key,
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "timestamp": str(int(time.time())),
-    }
-    params["sign"] = _sign_request(app_secret, params)
+    token = data.get("data", {}).get("access_token")
+    if not token:
+        raise RuntimeError(f"DTC getAccessToken 失败：{data}")
+    return token
+
+
+def _get_tiktok_auth_via_dtc(app_key: str, app_secret: str) -> tuple[str, str]:
+    """通过 DTC 获取 TikTok 店铺的 access_token 和 cipher。
+
+    返回包含 Piscifun 品牌的店铺认证信息；若无匹配则使用第一条。
+
+    Returns:
+        (access_token, cipher) 元组
+
+    Raises:
+        RuntimeError: 当 DTC 接口返回失败或无店铺数据时
+    """
+    dtc_token = _get_dtc_token()
+    params = {"tiktok_app_key": app_key, "tiktok_app_secret": app_secret}
+    headers = {"X-HUB-TOKEN": dtc_token, "Content-Type": "application/json"}
 
     resp = requests.get(
-        f"{BASE_URL}/api/v2/token/refresh",
-        params=params,
-        timeout=REQUEST_TIMEOUT,
+        _DTC_SHOP_SECRET_URL, params=params, headers=headers, timeout=REQUEST_TIMEOUT
     )
     resp.raise_for_status()
     data = resp.json()
 
-    if data.get("code") != 0:
-        raise RuntimeError(
-            f"Token 刷新失败，code={data.get('code')}，message={data.get('message')}"
-        )
+    if data.get("code") != 200:
+        raise RuntimeError(f"DTC getTiktokShopSecret 失败：{data}")
 
-    access_token = data.get("data", {}).get("access_token")
-    if not access_token:
-        raise RuntimeError("Token 刷新响应中缺少 access_token 字段")
-
-    return access_token
-
-
-def _get_shop_cipher(app_key: str, app_secret: str, access_token: str) -> str:
-    """通过 /api/shops/get_authorized_shop 获取 shop_cipher。
-
-    shop_cipher 是 TikTok Shop 每个店铺的加密标识符，每个 API 请求必须携带。
-
-    Raises:
-        RuntimeError: 当 API 返回失败或无 shop_cipher 时
-    """
-    params: dict = {
-        "app_key": app_key,
-        "access_token": access_token,
-        "timestamp": str(int(time.time())),
-    }
-    params["sign"] = _sign_request(app_secret, params)
-
-    resp = requests.get(
-        f"{BASE_URL}/api/shops/get_authorized_shop",
-        params=params,
-        timeout=REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-
-    if data.get("code") != 0:
-        raise RuntimeError(
-            f"获取 shop_cipher 失败，code={data.get('code')}，message={data.get('message')}"
-        )
-
-    shops = data.get("data", {}).get("shops", [])
+    shops = data.get("data", [])
     if not shops:
-        raise RuntimeError("获取 shop_cipher 失败：shops 列表为空")
+        raise RuntimeError("DTC 返回的店铺列表为空")
 
-    shop_cipher = shops[0].get("cipher")
-    if not shop_cipher:
-        raise RuntimeError("获取 shop_cipher 失败：cipher 字段缺失")
+    # 优先选择店铺名包含 "Piscifun" 的店铺
+    shop = next(
+        (s for s in shops if "Piscifun" in (s.get("shop_name") or "")),
+        shops[0],
+    )
 
-    return shop_cipher
+    access_token = shop.get("access_token")
+    cipher = shop.get("cipher")
+    if not access_token or not cipher:
+        raise RuntimeError(f"DTC 返回的店铺数据缺少 access_token 或 cipher：{shop}")
+
+    logger.info(f"[tiktok] 使用店铺：{shop.get('shop_name')}（id={shop.get('id')}）")
+    return access_token, cipher
 
 
 # ---- 公开接口（必须严格遵守三函数契约）----
@@ -149,11 +143,9 @@ def authenticate() -> bool:
         creds = _creds_module.get_credentials()
         logger.info("[tiktok] 认证 ...")
 
-        _access_token = _refresh_access_token(creds)
-        _shop_cipher = _get_shop_cipher(
+        _access_token, _shop_cipher = _get_tiktok_auth_via_dtc(
             creds["TIKTOK_APP_KEY"],
             creds["TIKTOK_APP_SECRET"],
-            _access_token,
         )
 
         logger.info("[tiktok] 认证 ... 成功")
@@ -167,9 +159,9 @@ def authenticate() -> bool:
 
 
 def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
-    """抓取 TikTok Shop 订单样本数据。
+    """抓取 TikTok Shop 达人订单样本数据。
 
-    调用 /api/orders/search，返回至少一条订单记录。
+    调用 /affiliate_creator/202410/orders/search，返回至少一条订单记录。
     table_name 参数忽略（TikTok 只有一个端点）。
 
     Returns:
@@ -185,24 +177,23 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     app_key = creds["TIKTOK_APP_KEY"]
     app_secret = creds["TIKTOK_APP_SECRET"]
 
-    # 构造请求参数（query string）
-    params: dict = {
-        "app_key": app_key,
-        "access_token": _access_token,
-        "shop_cipher": _shop_cipher,
-        "timestamp": str(int(time.time())),
-    }
-    # 请求体（JSON body）
+    path = "/affiliate_creator/202410/orders/search"
     payload: dict = {"page_size": 1}
 
-    # 签名时包含 query params + body 参数
-    params["sign"] = _sign_request(app_secret, {**params, **payload})
+    # query params 不含 access_token（access_token 放 header）
+    params: dict = {
+        "app_key": app_key,
+        "shop_cipher": _shop_cipher,
+        "timestamp": str(int(time.time()) - 60),
+    }
+    params["sign"] = _sign_request(app_secret, path, params, payload)
 
     logger.info("[tiktok] 获取订单样本 ...")
     resp = requests.post(
-        f"{BASE_URL}/api/orders/search",
+        f"{BASE_URL}{path}",
         params=params,
         json=payload,
+        headers={"x-tts-access-token": _access_token, "Content-Type": "application/json"},
         timeout=REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
@@ -213,7 +204,9 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             f"[tiktok] 订单查询失败，code={data.get('code')}，message={data.get('message')}"
         )
 
-    orders = data.get("data", {}).get("order_list", [])
+    # v2 API 响应中订单列表字段名为 orders
+    resp_data = data.get("data") or {}
+    orders = resp_data.get("orders") or resp_data.get("order_list", [])
     if not orders:
         raise RuntimeError("[tiktok] 订单查询返回空列表，无法完成字段发现")
 
