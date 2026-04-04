@@ -1,7 +1,9 @@
 """TripleWhale 数据源接入模块
 
 认证方式：X-API-KEY header
-接入表：pixel_orders_table / pixel_joined_tvf / sessions_table / product_analytics_tvf
+接入表：pixel_orders_table / pixel_joined_tvf / sessions_table / product_analytics_tvf /
+        pixel_keywords_joined_tvf / ads_table / social_media_comments_table /
+        social_media_pages_table / creatives_table / ai_visibility_table
 shopDomain：piscifun.myshopify.com（固定）
 
 公开接口（统一 source 契约）：
@@ -28,6 +30,12 @@ TABLES: list[str] = [
     "pixel_joined_tvf",
     "sessions_table",
     "product_analytics_tvf",
+    "pixel_keywords_joined_tvf",
+    "ads_table",
+    "social_media_comments_table",
+    "social_media_pages_table",
+    "creatives_table",
+    "ai_visibility_table",
 ]
 _DEFAULT_TABLE: str = "pixel_orders_table"
 
@@ -161,7 +169,9 @@ def _fetch_table(table_name: str, api_key: str) -> list[dict]:
 
     Args:
         table_name: 表名（pixel_orders_table / pixel_joined_tvf / sessions_table /
-                    product_analytics_tvf）。
+                    product_analytics_tvf / pixel_keywords_joined_tvf / ads_table /
+                    social_media_comments_table / social_media_pages_table /
+                    creatives_table / ai_visibility_table）。
         api_key: TripleWhale API Key。
 
     Returns:

@@ -44,6 +44,11 @@
 - `resp.json()` 未处理 JSONDecodeError [sources/triplewhale.py: _fetch_table] — 防御性编码，规范未要求；API 返回非 JSON 时 traceback 可见，不静默失败
 - `_get_api_key` KeyError 传播无 [triplewhale] 日志前缀 [sources/triplewhale.py: _get_api_key] — credentials 模块负责 ValueError，_get_api_key 职责明确；Epic 5 集成时统一添加错误层
 
+## Deferred from: code review of 2-1-triplewhale-数据源接入 Correct Course (2026-04-04)
+
+- `test_all_valid_tables_accepted` 路由断言为浅层（仅验证不抛 ValueError）[tests/test_triplewhale.py: TestFetchSample.test_all_valid_tables_accepted] — 超出 AC7 要求，属测试深度改进项；可在后续质量轮次中断言 call_args[0][0] == table_name
+- 6 张新表 URL 路由端点不确定性（table_name 直接拼接到 BASE_URL）[sources/triplewhale.py: _fetch_table] — Dev Notes 已注明，属预先 deferred 已知问题；实际集成时需确认各表端点路径
+
 ## Deferred from: code review of 2-2-tiktok-shop-数据源接入 (2026-04-03)
 
 - 模块级全局变量 `_access_token`/`_shop_cipher` 非线程安全 [sources/tiktok.py:26-27] — 架构层设计决策，单线程 CLI 场景不影响正确性
