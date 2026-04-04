@@ -11,7 +11,7 @@
 import argparse
 import logging
 import sys
-from typing import Any
+from typing import Any, Dict
 
 import reporter
 from config.credentials import get_credentials
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # 数据源注册表（有序，按推荐运行顺序）
 # social_media 是 stub，--all 时也纳入（调度器统一捕获 NotImplementedError）
 # ---------------------------------------------------------------------------
-SOURCES: dict[str, Any] = {
+SOURCES: Dict[str, Any] = {
     "triplewhale": triplewhale,
     "tiktok": tiktok,
     "dingtalk": dingtalk,
@@ -150,12 +150,12 @@ def main() -> None:
                 f"未知数据源：{args.source}，可用数据源：{list(SOURCES.keys())}"
             )
             sys.exit(1)
-        sources_to_run: dict[str, Any] = {args.source: SOURCES[args.source]}
+        sources_to_run: Dict[str, Any] = {args.source: SOURCES[args.source]}
     else:  # --all
         sources_to_run = SOURCES
 
     # --- 调度循环 ---
-    results: dict[str, str] = {}
+    results: Dict[str, str] = {}
     for source_name, module in sources_to_run.items():
         success = _run_source(source_name, module)
         results[source_name] = "成功" if success else "失败"

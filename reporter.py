@@ -10,7 +10,7 @@
 from datetime import datetime
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 import yaml
 
@@ -42,13 +42,13 @@ def _load_field_requirements() -> dict:
             return {}
 
 
-def _get_source_requirements(source_name: str) -> list[dict]:
+def _get_source_requirements(source_name: str) -> List[Dict]:
     """从 field_requirements.yaml 中提取指定数据源的所有需求字段。
 
     返回：[{"display_name": str, "report": str, "table": str | None}]
     """
     req = _load_field_requirements()
-    source_fields: list[dict] = []
+    source_fields: List[Dict] = []
     for report_name, items in req.items():
         if isinstance(items, list):
             for item in items:
@@ -73,7 +73,7 @@ def _escape_cell(value: object) -> str:
 
 def _render_raw_report(
     source_name: str,
-    fields: list[dict],
+    fields: List[Dict],
     table_name: Optional[str],
     sample_count: int,
 ) -> str:
@@ -82,7 +82,7 @@ def _render_raw_report(
     table_display = table_name if table_name else "N/A"
 
     # --- 报告头部 ---
-    lines: list[str] = [
+    lines: List[str] = [
         f"# {source_name} 字段验证报告（Raw）",
         "",
         f"**生成时间：** {now}",
@@ -127,7 +127,7 @@ def _render_validation_template(source_name: str) -> str:
     """渲染 validation 报告 Markdown 模板内容。"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    lines: list[str] = [
+    lines: List[str] = [
         f"# {source_name} 字段对标结论（Validation）",
         "",
         "> 本文件由工具首次生成，后续**人工维护**，工具运行不覆盖。",
@@ -167,7 +167,7 @@ def _render_validation_template(source_name: str) -> str:
 
 def write_raw_report(
     source_name: str,
-    fields: list[dict],
+    fields: List[Dict],
     table_name: Optional[str],
     sample_count: int,
 ) -> None:
