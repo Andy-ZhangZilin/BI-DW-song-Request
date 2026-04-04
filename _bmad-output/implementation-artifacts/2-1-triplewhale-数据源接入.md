@@ -2,11 +2,13 @@
 
 Status: done
 
+> **Correct Course 2026-04-04**：TripleWhale 表数量从 4 张扩展至 10 张，需补充 6 张新表的路由实现和测试覆盖。
+
 ## Story
 
 作为操作者，
-我希望验证器能通过 API Key 连接 TripleWhale，并针对 4 张业务表分别抓取样本字段，
-以便我能获得利润表和营销表现表所需字段的实际可用性报告。
+我希望验证器能通过 API Key 连接 TripleWhale，并针对 10 张业务表分别抓取样本字段，
+以便我能获得各报表所需字段的实际可用性报告。
 
 ## Acceptance Criteria
 
@@ -16,11 +18,13 @@ Status: done
 
 3. **Given** `fetch_sample` 返回的样本数据；**When** 调用 `triplewhale.extract_fields(sample)`；**Then** 返回 `list[dict]`，每条记录符合标准 FieldInfo 结构（`field_name`, `data_type`, `sample_value`, `nullable`）
 
-4. **Given** 4 张表（pixel_orders_table / pixel_joined_tvf / sessions_table / product_analytics_tvf）逐一执行；**When** 每张表的 `fetch_sample` + `extract_fields` + `write_raw_report` 完成；**Then** `reports/triplewhale-raw.md` 被创建，包含该表实际字段列表和需求字段对照区块
+4. **Given** 全部 10 张表（pixel_orders_table / pixel_joined_tvf / sessions_table / product_analytics_tvf / pixel_keywords_joined_tvf / ads_table / social_media_comments_table / social_media_pages_table / creatives_table / ai_visibility_table）逐一执行；**When** 每张表的 `fetch_sample` + `extract_fields` + `write_raw_report` 完成；**Then** `reports/triplewhale-raw.md` 被创建，包含各表实际字段列表分 Section 展示
 
-5. **Given** API Key 无效或网络超时；**When** 调用 `authenticate()` 或 `fetch_sample()`；**Then** 在日志中输出 `[triplewhale] 认证 ... 失败：{具体错误信息}`，函数返回 `False` 或抛出异常，不静默失败
+5. **Given** `sources/triplewhale.py` 中的 `TABLES` 常量；**When** 检查其内容；**Then** 包含以上全部 10 张表名
 
-6. **Given** 单元测试环境（mock get_credentials + fixture）；**When** 运行 `tests/test_triplewhale.py`；**Then** 所有单元测试通过，不需要真实 API Key
+6. **Given** API Key 无效或网络超时；**When** 调用 `authenticate()` 或 `fetch_sample()`；**Then** 在日志中输出 `[triplewhale] 认证 ... 失败：{具体错误信息}`，函数返回 `False` 或抛出异常，不静默失败
+
+7. **Given** 单元测试环境（mock get_credentials + fixture）；**When** 运行 `tests/test_triplewhale.py`；**Then** 所有单元测试通过，覆盖全部 10 张表的路由分支，不需要真实 API Key
 
 ## Tasks / Subtasks
 
@@ -586,6 +590,12 @@ claude-sonnet-4-6
 - [x] [Review][Patch] `_fetch_table` 未验证 `body["data"]` 是否为 list，`body=None` 时 TypeError [sources/triplewhale.py: _fetch_table] — 已修复：添加 isinstance 检查和 None 防护
 - [x] [Review][Defer] 未处理 `resp.json()` 的 JSONDecodeError [sources/triplewhale.py: _fetch_table] — deferred, 防御性编码，规范未要求
 - [x] [Review][Defer] `_get_api_key` KeyError 传播无 triplewhale 日志前缀 [sources/triplewhale.py: _get_api_key] — deferred, credentials 模块职责，get_credentials() 已保障
+
+### Review Findings（Correct Course 2026-04-04）
+
+- [x] [Review][Patch] 7 个新增 pytest fixture 无对应测试用例（未使用代码）[tests/test_triplewhale.py] — 已修复：移除全部 7 个未使用 fixture
+- [x] [Review][Defer] `test_all_valid_tables_accepted` 路由断言为浅层（仅验证不抛 ValueError）[tests/test_triplewhale.py: TestFetchSample.test_all_valid_tables_accepted] — deferred, 超出 AC7 要求，属测试深度改进项
+- [x] [Review][Defer] 6 张新表 URL 路由端点不确定性（table_name 直接拼接到 BASE_URL）[sources/triplewhale.py: _fetch_table] — deferred, Dev Notes 已注明，属预先 deferred 已知问题
 
 ## Change Log
 
