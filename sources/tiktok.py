@@ -17,9 +17,10 @@ fetch_sample(table_name) 路由表（共 7 个，6 个有效接口 + 1 个暂无
   affiliate_campaign_performance → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
                                         products/{product_id}/performance
 
-含动态路径参数的接口（shop_product_performance / affiliate_sample_status /
-affiliate_campaign_performance）需在 .env 中配置：
-  TIKTOK_PRODUCT_ID, TIKTOK_CAMPAIGN_ID, TIKTOK_CREATOR_TEMP_ID
+含动态路径参数的接口会优先读取 .env 中的配置，未配置时自动从商品列表接口获取第一个可用 ID：
+  TIKTOK_PRODUCT_ID    — 商品 ID（可选，未配置时自动获取）
+  TIKTOK_CAMPAIGN_ID   — 联盟活动 ID（需手动配置）
+  TIKTOK_CREATOR_TEMP_ID — 达人临时 ID（需手动配置）
 """
 import hashlib
 import hmac
@@ -148,16 +149,27 @@ def _get_tiktok_auth_via_dtc(app_key: str, app_secret: str) -> Tuple[str, str]:
     return access_token, cipher
 
 
-def _build_signed_params(app_key: str, app_secret: str, path: str, body: Optional[dict] = None) -> dict:
-    """构造带签名的 query 参数字典（包含 shop_cipher）。
+def _build_signed_params(
+    app_key: str,
+    app_secret: str,
+    path: str,
+    body: Optional[dict] = None,
+    include_shop_cipher: bool = True,
+) -> dict:
+    """构造带签名的 query 参数字典。
+
+    Args:
+        include_shop_cipher: 是否包含 shop_cipher。Shop 类接口需要（默认 True）；
+            Affiliate 类接口（affiliate_creator_orders、video_performances）不需要，传 False。
 
     注：时间戳使用当前时间 -60s，以兼容 TikTok 服务端 ±300s 容差。
     """
     params: dict = {
         "app_key": app_key,
-        "shop_cipher": _shop_cipher,
         "timestamp": str(int(time.time()) - 60),
     }
+    if include_shop_cipher:
+        params["shop_cipher"] = _shop_cipher
     params["sign"] = _sign_request(app_secret, path, params, body)
     return params
 
@@ -186,6 +198,51 @@ def _extract_list_from_data(data: object) -> List[Dict]:
                 return val
         return [data]
     return []
+
+
+def _fetch_first_product_id(app_key: str, app_secret: str) -> Optional[str]:
+    """从商品列表接口自动获取第一个上架商品的 ID。
+
+    用于 shop_product_performance / affiliate_sample_status /
+    affiliate_campaign_performance 等需要 product_id 的接口。
+    .env 中已配置 TIKTOK_PRODUCT_ID 时优先使用配置值，不再调用此接口。
+
+    Returns:
+        商品 ID 字符串，或 None（接口异常/无商品时）
+    """
+    path = "/product/202309/products/search"
+    sign_params: dict = {
+        "app_key": app_key,
+        "shop_cipher": _shop_cipher,
+        "timestamp": str(int(time.time()) - 60),
+        "page_size": "1",
+    }
+    body: dict = {}
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params, body)
+    sign_params["access_token"] = _access_token
+    try:
+        resp = requests.post(
+            f"{BASE_URL}{path}",
+            params=sign_params,
+            json=body,
+            headers=_api_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning(f"[tiktok] 商品列表查询失败：code={data.get('code')} {data.get('message')}")
+            return None
+        products = (data.get("data") or {}).get("products", [])
+        if not products:
+            logger.warning("[tiktok] 商品列表为空，无法自动获取 product_id")
+            return None
+        product_id = products[0].get("id")
+        logger.info(f"[tiktok] 自动获取 product_id={product_id}")
+        return product_id
+    except Exception as e:
+        logger.warning(f"[tiktok] 自动获取 product_id 失败：{e}")
+        return None
 
 
 # ---- 各路由私有实现 ----
@@ -222,7 +279,7 @@ def _fetch_affiliate_creator_orders(app_key: str, app_secret: str) -> List[Dict]
     """POST /affiliate_creator/202410/orders/search — 达人订单数据。"""
     path = "/affiliate_creator/202410/orders/search"
     payload: dict = {"page_size": 10}
-    params = _build_signed_params(app_key, app_secret, path, body=payload)
+    params = _build_signed_params(app_key, app_secret, path, body=payload, include_shop_cipher=False)
     logger.info("[tiktok] 获取达人订单样本 ...")
     resp = requests.post(
         f"{BASE_URL}{path}",
@@ -249,7 +306,7 @@ def _fetch_affiliate_creator_orders(app_key: str, app_secret: str) -> List[Dict]
 def _fetch_video_performances(app_key: str, app_secret: str) -> List[Dict]:
     """GET /analytics/202403/videos/performances — 视频表现。"""
     path = "/analytics/202403/videos/performances"
-    params = _build_signed_params(app_key, app_secret, path)
+    params = _build_signed_params(app_key, app_secret, path, include_shop_cipher=False)
     logger.info("[tiktok] 获取视频表现样本 ...")
     resp = requests.get(
         f"{BASE_URL}{path}",
@@ -275,11 +332,14 @@ def _fetch_video_performances(app_key: str, app_secret: str) -> List[Dict]:
 def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]:
     """GET /analytics/202509/shop_products/{product_id}/performance — 店铺商品表现。
 
-    需在 .env 中配置 TIKTOK_PRODUCT_ID；未配置时返回空列表。
+    优先使用 .env 中的 TIKTOK_PRODUCT_ID；未配置时自动从商品列表接口获取第一个商品 ID。
     """
     product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
     if not product_id:
-        logger.warning("[tiktok] TIKTOK_PRODUCT_ID 未配置，shop_product_performance 跳过")
+        logger.info("[tiktok] TIKTOK_PRODUCT_ID 未配置，尝试自动获取商品 ID ...")
+        product_id = _fetch_first_product_id(app_key, app_secret)
+    if not product_id:
+        logger.warning("[tiktok] 无法获取 product_id，shop_product_performance 跳过")
         return []
     path = f"/analytics/202509/shop_products/{product_id}/performance"
     params = _build_signed_params(app_key, app_secret, path)
@@ -315,6 +375,8 @@ def _fetch_affiliate_sample_status(app_key: str, app_secret: str) -> List[Dict]:
     campaign_id = _creds_module.get_optional_config("TIKTOK_CAMPAIGN_ID")
     product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
     creator_temp_id = _creds_module.get_optional_config("TIKTOK_CREATOR_TEMP_ID")
+    if not product_id:
+        product_id = _fetch_first_product_id(app_key, app_secret)
     if not campaign_id or not product_id or not creator_temp_id:
         logger.warning(
             "[tiktok] TIKTOK_CAMPAIGN_ID/PRODUCT_ID/CREATOR_TEMP_ID 未全部配置，"
@@ -358,6 +420,8 @@ def _fetch_affiliate_campaign_performance(app_key: str, app_secret: str) -> List
     """
     campaign_id = _creds_module.get_optional_config("TIKTOK_CAMPAIGN_ID")
     product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
+    if not product_id:
+        product_id = _fetch_first_product_id(app_key, app_secret)
     if not campaign_id or not product_id:
         logger.warning(
             "[tiktok] TIKTOK_CAMPAIGN_ID/PRODUCT_ID 未配置，affiliate_campaign_performance 跳过"
