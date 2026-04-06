@@ -276,10 +276,20 @@ def _fetch_return_refund(app_key: str, app_secret: str) -> List[Dict]:
 
 
 def _fetch_affiliate_creator_orders(app_key: str, app_secret: str) -> List[Dict]:
-    """POST /affiliate_creator/202410/orders/search — 达人订单数据。"""
+    """POST /affiliate_creator/202410/orders/search — 达人订单数据。
+
+    page_size 必须作为 query param 参与签名（不能放在 body 里），否则 TikTok 报 36009004。
+    """
     path = "/affiliate_creator/202410/orders/search"
-    payload: dict = {"page_size": 10}
-    params = _build_signed_params(app_key, app_secret, path, body=payload, include_shop_cipher=False)
+    payload: dict = {}
+    # page_size 必须放 query params（参与签名），不放 body
+    sign_params: dict = {
+        "app_key": app_key,
+        "timestamp": str(int(time.time()) - 60),
+        "page_size": "10",
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params, payload)
+    params = sign_params
     logger.info("[tiktok] 获取达人订单样本 ...")
     resp = requests.post(
         f"{BASE_URL}{path}",
@@ -304,10 +314,27 @@ def _fetch_affiliate_creator_orders(app_key: str, app_secret: str) -> List[Dict]
 
 
 def _fetch_video_performances(app_key: str, app_secret: str) -> List[Dict]:
-    """GET /analytics/202403/videos/performances — 视频表现。"""
-    path = "/analytics/202403/videos/performances"
-    params = _build_signed_params(app_key, app_secret, path, include_shop_cipher=False)
-    logger.info("[tiktok] 获取视频表现样本 ...")
+    """GET /analytics/202509/shop_videos/performance — 店铺视频表现列表（卖家视角）。
+
+    原 /analytics/202403/videos/performances 为 US-creator-only 接口，需要 creator token，
+    已切换为卖家端 /analytics/202509/shop_videos/performance，需要 shop_cipher 和
+    data.shop_analytics.public.read scope（与 shop_product_performance 相同）。
+    """
+    from datetime import datetime, timedelta
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=30)
+    path = "/analytics/202509/shop_videos/performance"
+    sign_params: dict = {
+        "app_key": app_key,
+        "shop_cipher": _shop_cipher,
+        "timestamp": str(int(time.time()) - 60),
+        "start_date_ge": start_dt.strftime("%Y-%m-%d"),
+        "end_date_lt": end_dt.strftime("%Y-%m-%d"),
+        "page_size": "10",
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params)
+    params = sign_params
+    logger.info("[tiktok] 获取店铺视频表现样本 ...")
     resp = requests.get(
         f"{BASE_URL}{path}",
         params=params,
@@ -320,7 +347,7 @@ def _fetch_video_performances(app_key: str, app_secret: str) -> List[Dict]:
         raise RuntimeError(
             f"[tiktok] 视频表现查询失败，code={data.get('code')}，message={data.get('message')}"
         )
-    resp_data = data.get("data") or []
+    resp_data = data.get("data") or {}
     records = _extract_list_from_data(resp_data)
     if not records:
         logger.warning("[tiktok] 视频表现查询返回空列表，字段发现将跳过")
@@ -341,8 +368,20 @@ def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]
     if not product_id:
         logger.warning("[tiktok] 无法获取 product_id，shop_product_performance 跳过")
         return []
+    from datetime import datetime, timedelta
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=30)
     path = f"/analytics/202509/shop_products/{product_id}/performance"
-    params = _build_signed_params(app_key, app_secret, path)
+    # start_date_ge / end_date_lt 必须在签名前加入参数，TikTok 要求所有 query param 参与签名
+    sign_params: dict = {
+        "app_key": app_key,
+        "shop_cipher": _shop_cipher,
+        "timestamp": str(int(time.time()) - 60),
+        "start_date_ge": start_dt.strftime("%Y-%m-%d"),
+        "end_date_lt": end_dt.strftime("%Y-%m-%d"),
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params)
+    params = sign_params
     logger.info(f"[tiktok] 获取店铺商品表现（product_id={product_id}）...")
     resp = requests.get(
         f"{BASE_URL}{path}",
