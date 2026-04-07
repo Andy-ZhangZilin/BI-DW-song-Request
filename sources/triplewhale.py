@@ -12,9 +12,11 @@ shopDomain：piscifun.myshopify.com（固定）
     authenticate() -> bool
     fetch_sample(table_name: str = None) -> list[dict]
     extract_fields(sample: list[dict]) -> list[dict]
+    fetch_data_profile(table_name: str) -> dict
 """
 import logging
 from datetime import datetime, timedelta, timezone
+from math import ceil
 from typing import Optional
 
 import requests
@@ -45,6 +47,25 @@ TABLES: list[str] = [
     "ai_visibility_table",
 ]
 _DEFAULT_TABLE: str = "pixel_orders_table"
+
+# --- 数据概况相关常量（Task 4.1）---
+RATE_LIMIT_RPM: int = 60          # TripleWhale API 速率限制（每分钟请求数，保守估计）
+MAX_ROWS_PER_REQUEST: int = 1000  # 每次 SQL 请求最大返回行数
+_PROFILE_START_DATE: str = "2019-01-01"  # 数据概况查询起始日期（覆盖全历史）
+
+# 各表日期列名（基于表结构规范；None 表示该表暂无已知日期列）
+_TABLE_DATE_COLUMNS: dict[str, Optional[str]] = {
+    "pixel_orders_table":           "created_at",
+    "pixel_joined_tvf":             "created_at",
+    "sessions_table":               "session_date",
+    "product_analytics_tvf":        "date",
+    "pixel_keywords_joined_tvf":    "date",
+    "ads_table":                    "date",
+    "social_media_comments_table":  "created_at",
+    "social_media_pages_table":     "created_at",
+    "creatives_table":              "created_at",
+    "ai_visibility_table":          "created_at",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +181,60 @@ def extract_fields(sample: list[dict]) -> list[dict]:
     return fields
 
 
+def fetch_data_profile(table_name: str) -> dict:
+    """获取指定表的数据概况：最早数据日期、总行数、rate limit、全量拉取预估时长。
+
+    执行两次 SQL 查询（MIN + COUNT）探测表的数据概况，用于评估全量拉取代价。
+    无数据时返回 earliest_date=None、total_rows=0、estimated_pull_minutes=None，
+    日志输出警告级别提示，不抛出异常。
+
+    Args:
+        table_name: 表名，必须为 TABLES 中的一个。
+
+    Returns:
+        {
+            "table_name": str,
+            "date_column": str | None,       # 该表使用的日期列名
+            "earliest_date": str | None,     # MIN(date_col) 结果，无数据时为 None
+            "total_rows": int,               # COUNT(*) 结果
+            "rate_limit_rpm": int,           # API 速率限制（常量）
+            "max_rows_per_request": int,     # 单次最大行数（常量）
+            "estimated_pull_minutes": float | None,  # ceil(rows/max_rows)/rpm，无数据时 None
+        }
+
+    Raises:
+        ValueError: table_name 不在 TABLES 中
+    """
+    if table_name not in TABLES:
+        raise ValueError(f"未知表名：{table_name}，可用：{TABLES}")
+
+    api_key = _get_api_key()
+    date_col = _TABLE_DATE_COLUMNS.get(table_name)
+
+    earliest_date = _fetch_earliest_date(table_name, api_key) if date_col else None
+    total_rows_raw = _fetch_row_count(table_name, api_key)
+    total_rows = total_rows_raw if total_rows_raw is not None else 0
+
+    if total_rows > 0:
+        estimated_pull_minutes: Optional[float] = (
+            ceil(total_rows / MAX_ROWS_PER_REQUEST) / RATE_LIMIT_RPM
+        )
+        logger.info(f"[triplewhale] 探测 {table_name} 数据概况 ... 成功")
+    else:
+        estimated_pull_minutes = None
+        logger.warning(f"[triplewhale] 探测 {table_name} 数据概况 ... 无数据（total_rows=0）")
+
+    return {
+        "table_name": table_name,
+        "date_column": date_col,
+        "earliest_date": earliest_date,
+        "total_rows": total_rows,
+        "rate_limit_rpm": RATE_LIMIT_RPM,
+        "max_rows_per_request": MAX_ROWS_PER_REQUEST,
+        "estimated_pull_minutes": estimated_pull_minutes,
+    }
+
+
 # ---------------------------------------------------------------------------
 # 私有辅助函数
 # ---------------------------------------------------------------------------
@@ -229,6 +304,99 @@ def _fetch_table(table_name: str, api_key: str) -> list[dict]:
     raise RuntimeError(
         f"[triplewhale] 无法解析 {table_name} 响应结构：{type(body)}"
     )
+
+
+def _fetch_earliest_date(table_name: str, api_key: str) -> Optional[str]:
+    """执行 MIN 查询获取表的最早数据日期。
+
+    Args:
+        table_name: 表名（TABLES 中的一个）。
+        api_key: TripleWhale API Key。
+
+    Returns:
+        最早日期字符串（str），表无数据或查询失败时返回 None。
+    """
+    date_col = _TABLE_DATE_COLUMNS.get(table_name)
+    if not date_col:
+        return None
+    query = f"SELECT MIN({date_col}) as earliest FROM {table_name}"
+    try:
+        rows = _run_sql_query(query, api_key)
+        if rows and rows[0].get("earliest") is not None:
+            return str(rows[0]["earliest"])
+        return None
+    except Exception as e:
+        logger.warning(f"[triplewhale] {table_name} MIN 查询失败：{e}")
+        return None
+
+
+def _fetch_row_count(table_name: str, api_key: str) -> Optional[int]:
+    """执行 COUNT(*) 查询获取表的总行数。
+
+    Args:
+        table_name: 表名（TABLES 中的一个）。
+        api_key: TripleWhale API Key。
+
+    Returns:
+        总行数（int），查询失败时返回 None。
+    """
+    query = f"SELECT COUNT(*) as total FROM {table_name}"
+    try:
+        rows = _run_sql_query(query, api_key)
+        if rows and rows[0].get("total") is not None:
+            return int(rows[0]["total"])
+        return 0
+    except Exception as e:
+        logger.warning(f"[triplewhale] {table_name} COUNT 查询失败：{e}")
+        return None
+
+
+def _run_sql_query(query: str, api_key: str) -> list[dict]:
+    """向 TripleWhale SQL 端点执行任意 SQL 查询，返回结果列表。
+
+    使用全历史时间范围（_PROFILE_START_DATE 至今）以确保聚合查询覆盖所有数据。
+
+    Args:
+        query: SQL 查询字符串（如 SELECT MIN(...) / SELECT COUNT(*) 等）。
+        api_key: TripleWhale API Key。
+
+    Returns:
+        结果记录列表（list[dict]），无结果时返回空列表。
+
+    Raises:
+        requests.Timeout: 请求超时（30s）
+        RuntimeError: HTTP 4xx 错误
+    """
+    end_date = str(datetime.now(timezone.utc).date())
+    headers = {"x-api-key": api_key, "content-type": "application/json"}
+    payload = {
+        "period": {"startDate": _PROFILE_START_DATE, "endDate": end_date},
+        "shopId": SHOP_DOMAIN,
+        "query": query,
+        "currency": "USD",
+    }
+
+    resp = requests.post(
+        SQL_URL,
+        headers=headers,
+        json=payload,
+        timeout=DEFAULT_TIMEOUT,
+    )
+
+    if not resp.ok:
+        if resp.status_code >= 500:
+            logger.warning(
+                f"[triplewhale] SQL 查询服务端错误（HTTP {resp.status_code}），返回空结果"
+            )
+            return []
+        raise RuntimeError(
+            f"SQL 查询失败：HTTP {resp.status_code} {resp.text[:200]}"
+        )
+
+    body = resp.json()
+    if isinstance(body, list):
+        return body
+    return []
 
 
 def _infer_type(value: object) -> str:

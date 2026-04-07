@@ -238,6 +238,51 @@ def write_raw_report(
         logger.info(f"[reporter] {source_name} raw 报告已写入 {path}")
 
 
+def write_triplewhale_data_profile(profiles: List[Dict]) -> None:
+    """将 TripleWhale 数据概况区块追加写入 reports/triplewhale-raw.md。
+
+    在 write_raw_report 所有表 Section 之后调用，追加"数据概况"Markdown 表格。
+    若文件不存在则创建。
+
+    Args:
+        profiles: fetch_data_profile() 返回的字典列表，每项含：
+            table_name, date_column, earliest_date, total_rows,
+            rate_limit_rpm, max_rows_per_request, estimated_pull_minutes
+    """
+    _ensure_reports_dir()
+    path = REPORTS_DIR / "triplewhale-raw.md"
+
+    lines: List[str] = [
+        "",
+        "---",
+        "",
+        "## 数据概况（TripleWhale 专属）",
+        "",
+        "| 表名 | 日期列 | 最早数据日期 | 总行数 | Rate Limit (RPM) | 每次最大行数 | 全量拉取预估时长 |",
+        "|------|--------|-------------|--------|-----------------|------------|----------------|",
+    ]
+
+    for profile in profiles:
+        table_name = _escape_cell(profile.get("table_name", ""))
+        date_column = _escape_cell(profile.get("date_column")) or "-"
+        earliest_date = _escape_cell(profile.get("earliest_date")) or "-"
+        total_rows = _escape_cell(profile.get("total_rows", 0))
+        rate_limit = _escape_cell(profile.get("rate_limit_rpm", ""))
+        max_rows = _escape_cell(profile.get("max_rows_per_request", ""))
+        est_minutes = profile.get("estimated_pull_minutes")
+        est_str = f"{est_minutes:.2f} min" if est_minutes is not None else "-"
+        lines.append(
+            f"| {table_name} | {date_column} | {earliest_date} | "
+            f"{total_rows} | {rate_limit} | {max_rows} | {est_str} |"
+        )
+
+    lines.append("")
+    content = "\n".join(lines)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(content)
+    logger.info(f"[reporter] triplewhale 数据概况已追加到 {path}")
+
+
 def init_validation_report(source_name: str) -> None:
     """仅在文件不存在时创建 reports/{source_name}-validation.md。
 
