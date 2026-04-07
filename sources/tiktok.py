@@ -14,8 +14,7 @@ fetch_sample(table_name) 路由表（共 7 个，6 个有效接口 + 1 个暂无
   affiliate_sample_status        → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
                                         products/{product_id}/creator/{creator_temp_id}/
                                         content/statistics/sample/status
-  affiliate_campaign_performance → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
-                                        products/{product_id}/performance
+  affiliate_campaign_performance → GET  /affiliate_partner/202405/campaigns（活动列表）
 
 含动态路径参数的接口会优先读取 .env 中的配置，未配置时按以下规则自动获取：
   TIKTOK_PRODUCT_ID      — 商品 ID（可选，未配置时从 /product/202309/products/search 自动获取）
@@ -684,38 +683,36 @@ def _fetch_affiliate_sample_status(app_key: str, app_secret: str) -> List[Dict]:
 
 
 def _fetch_affiliate_campaign_performance(app_key: str, app_secret: str) -> List[Dict]:
-    """GET /affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/performance
-    — 联盟活动履约状态。
+    """GET /affiliate_partner/202405/campaigns — 联盟活动列表。
 
-    campaign_id 优先读 .env TIKTOK_CAMPAIGN_ID，未配置时通过 category_assets + campaigns 列表自动获取。
-    product_id 优先读 .env TIKTOK_PRODUCT_ID，未配置时自动从商品列表获取。
+    按 API 文档返回字段：
+      id, name, status, registration_start_time, registration_end_time,
+      campaign_start_time, campaign_end_time
 
-    此接口使用 category_asset_cipher（非 shop_cipher）。
+    使用 category_asset_cipher（非 shop_cipher），未配置时自动从
+    /authorization/202405/category_assets 获取。
     """
-    campaign_id = _creds_module.get_optional_config("TIKTOK_CAMPAIGN_ID")
-    product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
-
-    if not product_id:
-        product_id = _fetch_first_product_id(app_key, app_secret)
-
-    if not campaign_id:
-        logger.info("[tiktok] TIKTOK_CAMPAIGN_ID 未配置，尝试自动获取 ...")
-        cipher = _fetch_category_asset_cipher(app_key, app_secret)
-        if cipher:
-            campaign_id = _fetch_first_campaign_id(app_key, app_secret, cipher)
-
-    if not campaign_id or not product_id:
-        logger.warning(
-            "[tiktok] campaign_id/product_id 获取失败，affiliate_campaign_performance 跳过"
-        )
+    logger.info("[tiktok] TIKTOK_CAMPAIGN_ID 未配置，尝试自动获取 ...")
+    cipher = _fetch_category_asset_cipher(app_key, app_secret)
+    if not cipher:
+        logger.warning("[tiktok] category_asset_cipher 获取失败，affiliate_campaign_performance 跳过")
         return []
 
-    path = f"/affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/performance"
-    params = _build_signed_params(app_key, app_secret, path, include_shop_cipher=False)
-    logger.info("[tiktok] 获取联盟活动履约状态 ...")
+    path = "/affiliate_partner/202405/campaigns"
+    sign_params: dict = {
+        "app_key": app_key,
+        "category_asset_cipher": cipher,
+        "timestamp": str(int(time.time()) - 60),
+        "type": "MY_CAMPAIGNS",
+        "page_size": "20",
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params)
+    sign_params["access_token"] = _access_token
+
+    logger.info("[tiktok] 获取联盟活动列表 ...")
     resp = requests.get(
         f"{BASE_URL}{path}",
-        params=params,
+        params=sign_params,
         headers=_api_headers(),
         timeout=REQUEST_TIMEOUT,
     )
@@ -723,15 +720,22 @@ def _fetch_affiliate_campaign_performance(app_key: str, app_secret: str) -> List
     data = resp.json()
     if data.get("code") != 0:
         raise RuntimeError(
-            f"[tiktok] 联盟活动履约状态查询失败，code={data.get('code')}，message={data.get('message')}"
+            f"[tiktok] 联盟活动列表查询失败，code={data.get('code')}，message={data.get('message')}"
         )
     resp_data = data.get("data") or {}
-    records = _extract_list_from_data(resp_data)
-    if not records:
-        logger.warning("[tiktok] 联盟活动履约状态返回空，字段发现将跳过")
+    campaigns = resp_data.get("campaigns", [])
+    if not campaigns:
+        logger.warning("[tiktok] 联盟活动列表返回空，字段发现将跳过")
         return []
-    logger.info("[tiktok] 获取联盟活动履约状态 ... 成功")
-    return records
+    # 严格按 API 文档字段过滤，只保留文档定义的字段
+    doc_fields = {
+        "id", "name", "status",
+        "registration_start_time", "registration_end_time",
+        "campaign_start_time", "campaign_end_time",
+    }
+    filtered = [{k: v for k, v in c.items() if k in doc_fields} for c in campaigns]
+    logger.info(f"[tiktok] 获取联盟活动列表 ... 成功（{len(filtered)} 条记录）")
+    return filtered
 
 
 # ---- 路由分发表 ----
