@@ -543,14 +543,13 @@ def _fetch_video_performances(app_key: str, app_secret: str) -> List[Dict]:
             f"[tiktok] 视频表现查询失败，code={data.get('code')}，message={data.get('message')}"
         )
     resp_data = data.get("data") or {}
-    # videos 是数组，直接取其中的单条视频记录展示内层字段
-    # 顶层还有 latest_available_date / next_page_token / total_count，但字段发现以视频记录为主
-    videos = resp_data.get("videos", [])
-    if not videos:
-        logger.warning("[tiktok] 视频表现查询返回空列表，字段发现将跳过")
+    # 按 API 文档结构返回顶层字段：latest_available_date / next_page_token / total_count / videos
+    # videos 作为 array 字段保留，不展平，体现层级关系
+    if not resp_data.get("videos") and not resp_data.get("total_count"):
+        logger.warning("[tiktok] 视频表现查询返回空，字段发现将跳过")
         return []
-    logger.info(f"[tiktok] 获取视频表现样本 ... 成功（{len(videos)} 条视频记录）")
-    return videos
+    logger.info(f"[tiktok] 获取视频表现样本 ... 成功（total_count={resp_data.get('total_count')}）")
+    return [resp_data]
 
 
 def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]:
@@ -593,16 +592,13 @@ def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]
             f"[tiktok] 店铺商品表现查询失败，code={data.get('code')}，message={data.get('message')}"
         )
     resp_data = data.get("data") or {}
-    # performance 是单个对象，按 API 文档结构展平到顶层
-    # 文档定义：data.latest_available_date + data.performance.{intervals/ratings/top_contents/top_creators}
-    performance = resp_data.get("performance")
-    if not performance:
+    # 按 API 文档结构返回：data 下有 latest_available_date（string）和 performance（object）
+    # performance 作为整体 object 字段保留，不展平，体现层级关系
+    if not resp_data.get("performance"):
         logger.warning("[tiktok] 店铺商品表现查询返回空，字段发现将跳过")
         return []
-    flat_record: dict = {"latest_available_date": resp_data.get("latest_available_date")}
-    flat_record.update(performance)
-    logger.info("[tiktok] 获取店铺商品表现 ... 成功（1 条记录，已展平 performance 字段）")
-    return [flat_record]
+    logger.info("[tiktok] 获取店铺商品表现 ... 成功（1 条记录）")
+    return [resp_data]
 
 
 def _fetch_affiliate_sample_status(app_key: str, app_secret: str) -> List[Dict]:
