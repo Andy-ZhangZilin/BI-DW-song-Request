@@ -18,7 +18,12 @@ import logging
 import time
 from typing import Optional
 
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+# playwright 仅在实际调用时导入，避免顶层 import 在不支持 greenlet 的环境下（Windows 部分配置）报错
+try:
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+except ImportError:
+    sync_playwright = None  # type: ignore[assignment]
+    PlaywrightTimeoutError = Exception  # type: ignore[assignment,misc]
 
 from config.credentials import get_credentials, mask_credential
 from reporter import write_raw_report, init_validation_report
