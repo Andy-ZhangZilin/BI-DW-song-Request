@@ -11,7 +11,11 @@
 import logging
 from typing import Optional
 
-from playwright.sync_api import sync_playwright, Page
+try:
+    from playwright.sync_api import sync_playwright, Page
+except ImportError:
+    sync_playwright = None  # type: ignore[assignment]
+    Page = None  # type: ignore[assignment,misc]
 
 import config.credentials as _creds_module
 
