@@ -77,15 +77,3 @@
 | 点击打开率 | string | 5.26% | false |
 | 操作 | string | （空） | false |
 
----
-
-## 关键修复说明
-
-| 问题 | 根因 | 修复方案 |
-|---|---|---|
-| URL 错误 | 代码使用 `cartsee.io`，实际为 `app.cartsee.com` | 改为 `app.cartsee.com/cartsee-new/login` 和 `/campaign/list` |
-| 登录表单选择器不匹配 | 使用英文 placeholder，实际为中文 Arco Design 组件 | 改为 `input[placeholder='请输入邮箱']`，按钮 `button:has-text('登录')` |
-| 登录后 URL 判断过早 | `networkidle` 在 SPA 重定向完成前就触发 | 改用 `wait_for_url(lambda url: "login" not in url)` |
-| 表格数据为空 | Arco Design 使用双 `<table>` 结构，表头和数据分离 | 从 `table[0]` 取表头，从 `table[1]` 取数据行 |
-| 数据行内容为空 | 导航后 JS 异步渲染未完成就开始提取 | 改用 `wait_for_function` 等待首行 td 有实际文本 |
-| extract_fields 示例值为零 | 第一条记录是草稿活动，数据全零 | 优先取第一个非空非零非"-"的有效值 |
