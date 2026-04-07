@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-04  # updated by correct-course + story 2-1 done + story 2-2 done
+last_updated: 2026-04-07  # updated by correct-course: story 2-1 回退为 ready-for-dev（新增 fetch_data_profile 功能）
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -53,8 +53,9 @@ development_status:
 
   # Epic 2: 高优先级 API 数据源接入
   # Correct Course 2026-04-04: 2-1 补全 TripleWhale 10 张表，2-2 扩展 TikTok 6 接口路由
+  # Correct Course 2026-04-07: 2-1 新增 fetch_data_profile()（最早数据/rate limit/全量预估）
   epic-2: in-progress
-  2-1-triplewhale-数据源接入: done
+  2-1-triplewhale-数据源接入: ready-for-dev
   2-2-tiktok-shop-数据源接入: done
   epic-2-retrospective: optional
 
