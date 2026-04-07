@@ -599,9 +599,21 @@ def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]
     if not performance:
         logger.warning("[tiktok] 店铺商品表现查询返回空，字段发现将跳过")
         return []
-    # 将 performance 内层字段提升到顶层，同时保留 latest_available_date
-    flat_record = {"latest_available_date": resp_data.get("latest_available_date")}
-    flat_record.update(performance)
+    # 将 performance 内层字段展平到顶层
+    flat_record: dict = {"latest_available_date": resp_data.get("latest_available_date")}
+    # intervals: 取第一个区间的 start_date / end_date
+    intervals = performance.get("intervals") or []
+    if intervals:
+        flat_record["interval_start_date"] = intervals[0].get("start_date")
+        flat_record["interval_end_date"] = intervals[0].get("end_date")
+    # ratings: 按星级展平为 rating_Xstar_count / rating_Xstar_percentage
+    for item in performance.get("ratings") or []:
+        stars_key = (item.get("stars") or "").lower().replace("_star", "star")
+        flat_record[f"rating_{stars_key}_count"] = item.get("count")
+        flat_record[f"rating_{stars_key}_percentage"] = item.get("percentage")
+    # top_contents / top_creators: 保留数组（字段发现层面只需知道字段存在即可）
+    flat_record["top_contents"] = performance.get("top_contents")
+    flat_record["top_creators"] = performance.get("top_creators")
     logger.info("[tiktok] 获取店铺商品表现 ... 成功（1 条记录，已展平 performance 字段）")
     return [flat_record]
 
