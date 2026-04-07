@@ -34,7 +34,7 @@ def authenticate() -> bool:
         browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            page.goto("https://cartsee.io/login", timeout=15000)
+            page.goto("https://app.cartsee.com/cartsee-new/login", timeout=15000)
             page.wait_for_load_state("networkidle", timeout=15000)
 
             # 填写账号密码（选择器基于 CartSee 登录页实际结构）
@@ -44,7 +44,7 @@ def authenticate() -> bool:
             page.wait_for_load_state("networkidle", timeout=15000)
 
             # 判断登录成功：不再停留在登录页
-            if "login" not in page.url.lower() and "signin" not in page.url.lower():
+            if "/cartsee-new/login" not in page.url.lower():
                 logger.info("[cartsee] 认证 ... 成功")
                 return True
             else:
@@ -74,7 +74,7 @@ def fetch_sample(table_name: str = None) -> list[dict]:
         try:
             page = browser.new_page()
             # 登录
-            page.goto("https://cartsee.io/login", timeout=15000)
+            page.goto("https://app.cartsee.com/cartsee-new/login", timeout=15000)
             page.wait_for_load_state("networkidle", timeout=15000)
 
             page.fill("input[type='email'], input[name='email'], input[placeholder*='email' i]", username)
@@ -90,11 +90,11 @@ def fetch_sample(table_name: str = None) -> list[dict]:
                 raise RuntimeError("[cartsee] 遇到验证码，请手动完成验证后重新运行")
 
             # 检查登录是否成功
-            if "login" in page.url.lower() or "signin" in page.url.lower():
+            if "/cartsee-new/login" in page.url.lower():
                 raise RuntimeError("[cartsee] 登录失败，请检查账号密码")
 
-            # 导航至 campaigns/EDM 数据页面
-            page.goto("https://cartsee.io/campaigns", timeout=15000)
+            # 导航至营销活动列表页面
+            page.goto("https://app.cartsee.com/cartsee-new/campaign/list", timeout=15000)
             page.wait_for_load_state("networkidle", timeout=15000)
 
             # 再次验证码检测
