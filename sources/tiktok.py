@@ -17,10 +17,11 @@ fetch_sample(table_name) 路由表（共 7 个，6 个有效接口 + 1 个暂无
   affiliate_campaign_performance → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
                                         products/{product_id}/performance
 
-含动态路径参数的接口会优先读取 .env 中的配置，未配置时自动从商品列表接口获取第一个可用 ID：
-  TIKTOK_PRODUCT_ID    — 商品 ID（可选，未配置时自动获取）
-  TIKTOK_CAMPAIGN_ID   — 联盟活动 ID（需手动配置）
-  TIKTOK_CREATOR_TEMP_ID — 达人临时 ID（需手动配置）
+含动态路径参数的接口会优先读取 .env 中的配置，未配置时按以下规则自动获取：
+  TIKTOK_PRODUCT_ID      — 商品 ID（可选，未配置时从 /product/202309/products/search 自动获取）
+  TIKTOK_CAMPAIGN_ID     — 联盟活动 ID（可选，未配置时从 /authorization/202405/category_assets
+                            + /affiliate_partner/202405/campaigns 两步自动获取）
+  TIKTOK_CREATOR_TEMP_ID — 达人临时 ID（必须手动配置，无法自动获取）
 """
 import hashlib
 import hmac
@@ -203,6 +204,101 @@ def _extract_list_from_data(data: object) -> List[Dict]:
                 return val
         return [data]
     return []
+
+
+def _fetch_category_asset_cipher(app_key: str, app_secret: str) -> Optional[str]:
+    """从 /authorization/202405/category_assets 自动获取第一个 category_asset_cipher。
+
+    Affiliate Partner 类接口（campaigns / campaign performance 等）使用 category_asset_cipher
+    而非 shop_cipher。此接口无需传 cipher 参数，只需 app_key/timestamp/sign 和 access_token。
+
+    Required scope: partner.authorization.info
+
+    Returns:
+        category_asset_cipher 字符串，或 None（接口异常/无授权资产时）
+    """
+    path = "/authorization/202405/category_assets"
+    sign_params: dict = {
+        "app_key": app_key,
+        "timestamp": str(int(time.time()) - 60),
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params)
+    sign_params["access_token"] = _access_token
+    try:
+        resp = requests.get(
+            f"{BASE_URL}{path}",
+            params=sign_params,
+            headers=_api_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning(
+                f"[tiktok] category_assets 查询失败：code={data.get('code')} {data.get('message')}"
+            )
+            return None
+        assets = (data.get("data") or {}).get("category_assets", [])
+        if not assets:
+            logger.warning("[tiktok] category_assets 列表为空，无法获取 category_asset_cipher")
+            return None
+        cipher = assets[0].get("cipher")
+        logger.info(f"[tiktok] 自动获取 category_asset_cipher={cipher}")
+        return cipher
+    except Exception as e:
+        logger.warning(f"[tiktok] 自动获取 category_asset_cipher 失败：{e}")
+        return None
+
+
+def _fetch_first_campaign_id(
+    app_key: str, app_secret: str, category_asset_cipher: str
+) -> Optional[str]:
+    """从 /affiliate_partner/202405/campaigns 自动获取第一个 READY 状态的 campaign_id。
+
+    Required scope: partner.tap_campaign.read
+
+    Returns:
+        campaign_id 字符串，或 None（接口异常/无活动时）
+    """
+    path = "/affiliate_partner/202405/campaigns"
+    sign_params: dict = {
+        "app_key": app_key,
+        "category_asset_cipher": category_asset_cipher,
+        "timestamp": str(int(time.time()) - 60),
+        "type": "MY_CAMPAIGNS",
+        "page_size": "20",
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params)
+    sign_params["access_token"] = _access_token
+    try:
+        resp = requests.get(
+            f"{BASE_URL}{path}",
+            params=sign_params,
+            headers=_api_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning(
+                f"[tiktok] campaigns 列表查询失败：code={data.get('code')} {data.get('message')}"
+            )
+            return None
+        campaigns = (data.get("data") or {}).get("campaigns", [])
+        if not campaigns:
+            logger.warning("[tiktok] campaigns 列表为空，无法自动获取 campaign_id")
+            return None
+        # 优先取 READY 状态的活动，无则取第一个
+        ready = next((c for c in campaigns if c.get("status") == "READY"), None)
+        campaign = ready or campaigns[0]
+        campaign_id = campaign.get("id")
+        logger.info(
+            f"[tiktok] 自动获取 campaign_id={campaign_id}（status={campaign.get('status')}）"
+        )
+        return campaign_id
+    except Exception as e:
+        logger.warning(f"[tiktok] 自动获取 campaign_id 失败：{e}")
+        return None
 
 
 def _fetch_first_product_id(app_key: str, app_secret: str) -> Optional[str]:
@@ -455,27 +551,41 @@ def _fetch_affiliate_sample_status(app_key: str, app_secret: str) -> List[Dict]:
     """GET /affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/
     creator/{creator_temp_id}/content/statistics/sample/status — 获取寄样数。
 
-    需在 .env 中配置 TIKTOK_CAMPAIGN_ID、TIKTOK_PRODUCT_ID、TIKTOK_CREATOR_TEMP_ID；
-    任一未配置则返回空列表。
+    campaign_id 优先读 .env TIKTOK_CAMPAIGN_ID，未配置时自动从 campaigns 列表获取。
+    product_id 优先读 .env TIKTOK_PRODUCT_ID，未配置时自动从商品列表获取。
+    creator_temp_id 必须在 .env 中配置 TIKTOK_CREATOR_TEMP_ID，无法自动获取。
+
+    此接口使用 category_asset_cipher（非 shop_cipher）。
     """
     campaign_id = _creds_module.get_optional_config("TIKTOK_CAMPAIGN_ID")
     product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
     creator_temp_id = _creds_module.get_optional_config("TIKTOK_CREATOR_TEMP_ID")
+
     if not product_id:
         product_id = _fetch_first_product_id(app_key, app_secret)
-    if not campaign_id or not product_id or not creator_temp_id:
+
+    if not campaign_id:
+        logger.info("[tiktok] TIKTOK_CAMPAIGN_ID 未配置，尝试自动获取 ...")
+        cipher = _fetch_category_asset_cipher(app_key, app_secret)
+        if cipher:
+            campaign_id = _fetch_first_campaign_id(app_key, app_secret, cipher)
+
+    if not creator_temp_id:
+        logger.warning("[tiktok] TIKTOK_CREATOR_TEMP_ID 未配置，affiliate_sample_status 跳过")
+        return []
+    if not campaign_id or not product_id:
         logger.warning(
-            "[tiktok] TIKTOK_CAMPAIGN_ID/PRODUCT_ID/CREATOR_TEMP_ID 未全部配置，"
-            "affiliate_sample_status 跳过"
+            "[tiktok] campaign_id/product_id 获取失败，affiliate_sample_status 跳过"
         )
         return []
+
     path = (
         f"/affiliate_partner/202508/campaigns/{campaign_id}"
         f"/products/{product_id}"
         f"/creator/{creator_temp_id}"
         f"/content/statistics/sample/status"
     )
-    params = _build_signed_params(app_key, app_secret, path)
+    params = _build_signed_params(app_key, app_secret, path, include_shop_cipher=False)
     logger.info("[tiktok] 获取联盟寄样状态 ...")
     resp = requests.get(
         f"{BASE_URL}{path}",
@@ -502,19 +612,31 @@ def _fetch_affiliate_campaign_performance(app_key: str, app_secret: str) -> List
     """GET /affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/performance
     — 联盟活动履约状态。
 
-    需在 .env 中配置 TIKTOK_CAMPAIGN_ID、TIKTOK_PRODUCT_ID；未配置则返回空列表。
+    campaign_id 优先读 .env TIKTOK_CAMPAIGN_ID，未配置时通过 category_assets + campaigns 列表自动获取。
+    product_id 优先读 .env TIKTOK_PRODUCT_ID，未配置时自动从商品列表获取。
+
+    此接口使用 category_asset_cipher（非 shop_cipher）。
     """
     campaign_id = _creds_module.get_optional_config("TIKTOK_CAMPAIGN_ID")
     product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
+
     if not product_id:
         product_id = _fetch_first_product_id(app_key, app_secret)
+
+    if not campaign_id:
+        logger.info("[tiktok] TIKTOK_CAMPAIGN_ID 未配置，尝试自动获取 ...")
+        cipher = _fetch_category_asset_cipher(app_key, app_secret)
+        if cipher:
+            campaign_id = _fetch_first_campaign_id(app_key, app_secret, cipher)
+
     if not campaign_id or not product_id:
         logger.warning(
-            "[tiktok] TIKTOK_CAMPAIGN_ID/PRODUCT_ID 未配置，affiliate_campaign_performance 跳过"
+            "[tiktok] campaign_id/product_id 获取失败，affiliate_campaign_performance 跳过"
         )
         return []
+
     path = f"/affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/performance"
-    params = _build_signed_params(app_key, app_secret, path)
+    params = _build_signed_params(app_key, app_secret, path, include_shop_cipher=False)
     logger.info("[tiktok] 获取联盟活动履约状态 ...")
     resp = requests.get(
         f"{BASE_URL}{path}",
