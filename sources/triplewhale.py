@@ -1,6 +1,8 @@
 """TripleWhale 数据源接入模块
 
-认证方式：X-API-KEY header
+认证方式：x-api-key header（小写，HTTP/2 兼容）
+数据端点：/api/v2/attribution/get-orders-with-journeys-v2（订单+归因数据）
+认证探针：/api/v2/summary-page/get-data
 接入表：pixel_orders_table / pixel_joined_tvf / sessions_table / product_analytics_tvf /
         pixel_keywords_joined_tvf / ads_table / social_media_comments_table /
         social_media_pages_table / creatives_table / ai_visibility_table
@@ -12,6 +14,7 @@ shopDomain：piscifun.myshopify.com（固定）
     extract_fields(sample: list[dict]) -> list[dict]
 """
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -22,9 +25,12 @@ from config.credentials import mask_credential
 logger = logging.getLogger(__name__)
 
 # --- 常量 ---
-BASE_URL: str = "https://api.triplewhale.com/api/v2/tw-metrics"
+_API_BASE: str = "https://api.triplewhale.com/api/v2"
+AUTH_URL: str = f"{_API_BASE}/summary-page/get-data"
+ATTRIBUTION_URL: str = f"{_API_BASE}/attribution/get-orders-with-journeys-v2"
 SHOP_DOMAIN: str = "piscifun.myshopify.com"
 DEFAULT_TIMEOUT: int = 30  # 秒，与架构规范一致
+_SAMPLE_DAYS: int = 7  # 样本抓取天数
 TABLES: list[str] = [
     "pixel_orders_table",
     "pixel_joined_tvf",
@@ -47,7 +53,7 @@ _DEFAULT_TABLE: str = "pixel_orders_table"
 def authenticate() -> bool:
     """验证 TRIPLEWHALE_API_KEY 是否有效。
 
-    通过向 metrics-data 端点发送探测请求来验证 API Key。
+    通过向 summary-page/get-data 发送探测请求来验证 API Key。
     成功返回 True，失败打印错误并返回 False。
     日志格式：[triplewhale] 认证 ... 成功/失败：{原因}
 
@@ -57,14 +63,14 @@ def authenticate() -> bool:
     try:
         api_key = _get_api_key()
         logger.info(f"[triplewhale] 认证中，使用 API Key: {mask_credential(api_key)}")
-        resp = requests.get(
-            f"{BASE_URL}/metrics-data",
-            headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
-            params={"shopDomain": SHOP_DOMAIN},
+        start, end = _sample_date_range()
+        resp = requests.post(
+            AUTH_URL,
+            headers={"x-api-key": api_key, "content-type": "application/json"},
+            json={"shopDomain": SHOP_DOMAIN, "period": {"start": start, "end": end}},
             timeout=DEFAULT_TIMEOUT,
         )
-        # HTTP 200 或 400（参数不完整但 Key 有效）均视为认证成功
-        if resp.status_code in (200, 400):
+        if resp.status_code == 200:
             logger.info("[triplewhale] 认证 ... 成功")
             return True
         logger.error(
@@ -164,28 +170,43 @@ def _get_api_key() -> str:
     return _creds_module.get_credentials()["TRIPLEWHALE_API_KEY"]
 
 
+def _sample_date_range() -> tuple[str, str]:
+    """返回 (start_date, end_date) 用于样本请求，格式 YYYY-MM-DD，最近 7 天。"""
+    end = datetime.now(timezone.utc).date()
+    start = end - timedelta(days=_SAMPLE_DAYS)
+    return str(start), str(end)
+
+
 def _fetch_table(table_name: str, api_key: str) -> list[dict]:
-    """向 TripleWhale 请求指定表的数据，返回原始记录列表。
+    """向 TripleWhale Attribution 端点请求订单归因数据，返回原始记录列表。
+
+    TripleWhale REST API 仅公开以下数据读取端点：
+      - /api/v2/summary-page/get-data（聚合指标）
+      - /api/v2/attribution/get-orders-with-journeys-v2（订单+归因，本函数使用此端点）
+    table_name 参数用于日志标识，所有表均通过同一端点取样本数据。
 
     Args:
-        table_name: 表名（pixel_orders_table / pixel_joined_tvf / sessions_table /
-                    product_analytics_tvf / pixel_keywords_joined_tvf / ads_table /
-                    social_media_comments_table / social_media_pages_table /
-                    creatives_table / ai_visibility_table）。
+        table_name: 表名（用于日志）。
         api_key: TripleWhale API Key。
 
     Returns:
-        原始记录列表。
+        原始记录列表（ordersWithJourneys）。
 
     Raises:
         requests.Timeout: 请求超时（30s）
-        RuntimeError: HTTP 非 2xx 或响应中无 data 字段
+        RuntimeError: HTTP 非 2xx 或响应中缺少 ordersWithJourneys 字段
     """
-    headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
-    payload = {"shopDomain": SHOP_DOMAIN}
+    start, end = _sample_date_range()
+    headers = {"x-api-key": api_key, "content-type": "application/json"}
+    payload = {
+        "shop": SHOP_DOMAIN,
+        "startDate": start,
+        "endDate": end,
+        "excludeJourneyData": False,
+    }
 
     resp = requests.post(
-        f"{BASE_URL}/{table_name}",
+        ATTRIBUTION_URL,
         headers=headers,
         json=payload,
         timeout=DEFAULT_TIMEOUT,
@@ -197,16 +218,10 @@ def _fetch_table(table_name: str, api_key: str) -> list[dict]:
         )
 
     body = resp.json()
-    # 兼容两种响应结构：{"data": [...]} 或直接为列表
-    if isinstance(body, list):
-        return body
-    if isinstance(body, dict):
-        if "data" in body and isinstance(body["data"], list):
-            return body["data"]
-        # 部分端点可能将结果放在其他键
-        for key in ("rows", "records", "results", "items"):
-            if key in body and isinstance(body[key], list):
-                return body[key]
+    if isinstance(body, dict) and "ordersWithJourneys" in body:
+        rows = body["ordersWithJourneys"]
+        if isinstance(rows, list):
+            return rows
     raise RuntimeError(
         f"[triplewhale] 无法解析 {table_name} 响应结构，"
         f"响应键：{list(body.keys()) if isinstance(body, dict) else type(body)}"

@@ -56,69 +56,69 @@ def joined_sample(tw_sample) -> list[dict]:
 class TestAuthenticate:
     def test_success_http_200(self, mock_credentials):
         """HTTP 200 → 返回 True，日志含"成功"。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200)
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200)
             result = authenticate()
         assert result is True
 
-    def test_success_http_400(self, mock_credentials):
-        """HTTP 400（参数不完整但 Key 有效） → 返回 True。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=400, text="Bad Request")
+    def test_failure_http_400(self, mock_credentials):
+        """HTTP 400 → 返回 False（summary-page 端点参数错误视为失败）。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=400, text="Bad Request")
             result = authenticate()
-        assert result is True
+        assert result is False
 
     def test_failure_http_401(self, mock_credentials):
         """HTTP 401 → 返回 False，不抛出异常。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=401, text="Unauthorized")
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=401, text="Unauthorized")
             result = authenticate()
         assert result is False
 
     def test_failure_http_403(self, mock_credentials):
         """HTTP 403 → 返回 False。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=403, text="Forbidden")
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=403, text="Forbidden")
             result = authenticate()
         assert result is False
 
     def test_timeout_returns_false(self, mock_credentials):
         """请求超时 → 返回 False，不抛出未处理异常。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.side_effect = req_lib.Timeout()
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.side_effect = req_lib.Timeout()
             result = authenticate()
         assert result is False
 
     def test_network_error_returns_false(self, mock_credentials):
         """网络错误（ConnectionError）→ 返回 False。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.side_effect = req_lib.ConnectionError("Network unreachable")
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.side_effect = req_lib.ConnectionError("Network unreachable")
             result = authenticate()
         assert result is False
 
     def test_uses_api_key_header(self, mock_credentials):
-        """请求必须使用 X-API-KEY header 携带 API Key。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200)
+        """请求必须使用 x-api-key header 携带 API Key（小写，HTTP/2 兼容）。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200)
             authenticate()
-        call_kwargs = mock_get.call_args[1]
-        assert "X-API-KEY" in call_kwargs["headers"]
-        assert call_kwargs["headers"]["X-API-KEY"] == "test_tw_key"
+        call_kwargs = mock_post.call_args[1]
+        assert "x-api-key" in call_kwargs["headers"]
+        assert call_kwargs["headers"]["x-api-key"] == "test_tw_key"
 
-    def test_uses_shop_domain_param(self, mock_credentials):
-        """请求必须携带 shopDomain=piscifun.myshopify.com 参数。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200)
+    def test_uses_shop_domain_in_body(self, mock_credentials):
+        """请求 body 必须包含 shopDomain=piscifun.myshopify.com。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200)
             authenticate()
-        call_kwargs = mock_get.call_args[1]
-        assert call_kwargs["params"]["shopDomain"] == SHOP_DOMAIN
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["json"]["shopDomain"] == SHOP_DOMAIN
 
     def test_uses_timeout(self, mock_credentials):
         """请求必须设置 timeout=30。"""
-        with patch("sources.triplewhale.requests.get") as mock_get:
-            mock_get.return_value = MagicMock(status_code=200)
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=200)
             authenticate()
-        call_kwargs = mock_get.call_args[1]
+        call_kwargs = mock_post.call_args[1]
         assert call_kwargs["timeout"] == DEFAULT_TIMEOUT
 
 
@@ -323,57 +323,46 @@ class TestInferType:
 # ---------------------------------------------------------------------------
 
 class TestFetchTable:
-    def test_post_request_uses_shop_domain(self, mock_credentials):
-        """POST 请求 body 必须包含 shopDomain。"""
+    def test_post_request_uses_shop_field(self, mock_credentials):
+        """POST 请求 body 必须包含 shop 字段（attribution 端点规范）。"""
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"data": [{"order_id": "ORD-001"}]},
+                json=lambda: {"ordersWithJourneys": [{"order_id": "ORD-001"}]},
             )
             _fetch_table("pixel_orders_table", "test_tw_key")
         call_kwargs = mock_post.call_args[1]
-        assert call_kwargs["json"]["shopDomain"] == SHOP_DOMAIN
+        assert call_kwargs["json"]["shop"] == SHOP_DOMAIN
 
     def test_post_request_uses_api_key_header(self, mock_credentials):
-        """POST 请求 header 必须包含 X-API-KEY。"""
+        """POST 请求 header 必须包含 x-api-key（小写，HTTP/2 兼容）。"""
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"data": [{"order_id": "ORD-001"}]},
+                json=lambda: {"ordersWithJourneys": [{"order_id": "ORD-001"}]},
             )
             _fetch_table("pixel_orders_table", "test_tw_key")
         call_kwargs = mock_post.call_args[1]
-        assert call_kwargs["headers"]["X-API-KEY"] == "test_tw_key"
+        assert call_kwargs["headers"]["x-api-key"] == "test_tw_key"
 
     def test_post_request_uses_timeout(self, mock_credentials):
         """POST 请求必须设置 timeout=30。"""
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"data": [{"order_id": "ORD-001"}]},
+                json=lambda: {"ordersWithJourneys": [{"order_id": "ORD-001"}]},
             )
             _fetch_table("pixel_orders_table", "test_tw_key")
         call_kwargs = mock_post.call_args[1]
         assert call_kwargs["timeout"] == DEFAULT_TIMEOUT
 
-    def test_response_data_key_extracted(self, mock_credentials):
-        """响应 {"data": [...]} → 返回 data 列表。"""
+    def test_response_orders_with_journeys_extracted(self, mock_credentials):
+        """响应 {"ordersWithJourneys": [...]} → 返回该列表。"""
         expected = [{"order_id": "ORD-001", "total_price": 99.99}]
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"data": expected, "total": 1},
-            )
-            result = _fetch_table("pixel_orders_table", "test_tw_key")
-        assert result == expected
-
-    def test_response_list_directly(self, mock_credentials):
-        """响应直接为列表 [...] → 直接返回。"""
-        expected = [{"order_id": "ORD-001"}]
-        with patch("sources.triplewhale.requests.post") as mock_post:
-            mock_post.return_value = MagicMock(
-                ok=True,
-                json=lambda: expected,
+                json=lambda: {"ordersWithJourneys": expected, "count": 1},
             )
             result = _fetch_table("pixel_orders_table", "test_tw_key")
         assert result == expected
@@ -404,13 +393,14 @@ class TestFetchTable:
             with pytest.raises(req_lib.Timeout):
                 _fetch_table("pixel_orders_table", "test_tw_key")
 
-    def test_rows_key_extracted(self, mock_credentials):
-        """响应 {"rows": [...]} → 返回 rows 列表（兼容备选结构）。"""
-        expected = [{"order_id": "ORD-001"}]
+    def test_post_request_includes_date_range(self, mock_credentials):
+        """POST 请求 body 必须包含 startDate 和 endDate 字段。"""
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"rows": expected},
+                json=lambda: {"ordersWithJourneys": [{"order_id": "ORD-001"}]},
             )
-            result = _fetch_table("pixel_orders_table", "test_tw_key")
-        assert result == expected
+            _fetch_table("pixel_orders_table", "test_tw_key")
+        call_kwargs = mock_post.call_args[1]
+        assert "startDate" in call_kwargs["json"]
+        assert "endDate" in call_kwargs["json"]
