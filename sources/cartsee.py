@@ -215,9 +215,11 @@ def extract_fields(sample: list[dict]) -> list[dict]:
             None,
         )
         data_type = _infer_type(non_none_value)
+        # 优先取第一个有意义的值（非空、非零、非"-"），避免草稿活动的全零数据作为示例
         sample_value = next(
-            (record[key] for record in sample if key in record),
-            None,
+            (record[key] for record in sample
+             if key in record and record[key] not in (None, "", "0", "-")),
+            next((record[key] for record in sample if key in record), None),
         )
         nullable = any(record.get(key) is None for record in sample)
         fields.append({
