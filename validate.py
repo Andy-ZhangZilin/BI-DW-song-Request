@@ -88,6 +88,18 @@ def _run_source(source_name: str, module: Any, table: Optional[str] = None) -> b
                     source_name, fields, table_name, len(sample), append=(i > 0)
                 )
                 logger.info(f"[{source_name}] {table_name} ... 成功")
+            # 数据概况探测：各表 MIN + COUNT，写入数据概况区块（AC10）
+            logger.info(f"[{source_name}] 探测各表数据概况 ...")
+            profiles = []
+            for table_name in tables:
+                try:
+                    profile = module.fetch_data_profile(table_name)
+                    profiles.append(profile)
+                except Exception as profile_err:
+                    logger.warning(
+                        f"[{source_name}] {table_name} 数据概况探测失败，跳过：{profile_err}"
+                    )
+            reporter.write_triplewhale_data_profile(profiles)
             reporter.init_validation_report(source_name)
         elif source_name == "tiktok":
             # tiktok 多接口路由：每个接口独立抓样本，后续追加 Section

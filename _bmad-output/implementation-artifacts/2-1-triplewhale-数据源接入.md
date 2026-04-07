@@ -26,6 +26,12 @@ Status: done
 
 7. **Given** 单元测试环境（mock get_credentials + fixture）；**When** 运行 `tests/test_triplewhale.py`；**Then** 所有单元测试通过，覆盖全部 10 张表的路由分支，不需要真实 API Key
 
+8. **Given** 认证成功后传入有效 `table_name`；**When** 调用 `fetch_data_profile(table_name)`；**Then** 返回含 `earliest_date`、`total_rows`、`rate_limit_rpm`、`max_rows_per_request`、`estimated_pull_minutes` 的字典，两次 SQL 查询（MIN + COUNT）均在 30s 超时内完成，日志输出 `[triplewhale] 探测 {table_name} 数据概况 ... 成功`
+
+9. **Given** 表当前无数据（如 `creatives_table` / `ai_visibility_table`）；**When** 调用 `fetch_data_profile(table_name)`；**Then** 返回 `earliest_date=None`、`total_rows=0`、`estimated_pull_minutes=None`，日志输出警告级别提示，不抛出异常
+
+10. **Given** validate.py 运行 triplewhale 流程；**When** 全部 10 张表的 `fetch_data_profile` 执行完成；**Then** reporter 将"数据概况"区块写入 `reports/triplewhale-raw.md`，包含每张表的最早数据日期、总行数、rate limit、预估拉取时长
+
 ## Tasks / Subtasks
 
 - [x] Task 1: 实现 `sources/triplewhale.py` 核心结构（AC: 1, 2, 3, 4, 5）
@@ -38,6 +44,22 @@ Status: done
 
 - [x] Task 2: 编写测试 Fixture `tests/fixtures/triplewhale_sample.json`（AC: 6）
   - [x] Task 2.1: 创建代表 pixel_orders_table 返回格式的模拟响应 JSON（含 data 列表，至少 2 条记录，覆盖 string/number/boolean/null 字段类型）
+
+- [x] Task 4: 实现 `fetch_data_profile()` 及私有辅助函数（AC: 8, 9）
+  - [x] Task 4.1: 在常量块追加 `RATE_LIMIT_RPM`、`MAX_ROWS_PER_REQUEST`、`_TABLE_DATE_COLUMNS`（基于 raw 报告确认的各表日期列名）
+  - [x] Task 4.2: 实现 `_fetch_earliest_date(table_name, api_key) -> str | None`（SQL: `SELECT MIN({date_col}) as earliest FROM {table_name}`，无数据返回 None）
+  - [x] Task 4.3: 实现 `_fetch_row_count(table_name, api_key) -> int | None`（SQL: `SELECT COUNT(*) as total FROM {table_name}`，失败返回 None）
+  - [x] Task 4.4: 实现 `fetch_data_profile(table_name) -> dict`（调用上述两个私有函数，组装返回值，计算 `estimated_pull_minutes = ceil(total_rows / MAX_ROWS_PER_REQUEST) / RATE_LIMIT_RPM`）
+
+- [x] Task 5: 新增单元测试覆盖 `fetch_data_profile`（AC: 8, 9）
+  - [x] Task 5.1: `test_fetch_data_profile_success`（mock 两次 SQL 查询返回有效数据，验证字典结构和 estimated_pull_minutes 计算正确）
+  - [x] Task 5.2: `test_fetch_data_profile_no_data`（mock COUNT 返回 0，验证 `estimated_pull_minutes=None`）
+  - [x] Task 5.3: `test_fetch_data_profile_query_failure`（mock SQL 查询抛异常，验证返回 None 不传播异常）
+  - [x] Task 5.4: `test_fetch_data_profile_invalid_table`（验证抛出 `ValueError`）
+
+- [x] Task 6: 更新 `reporter.py` 新增 `write_triplewhale_data_profile(profiles: list[dict]) -> None`（AC: 10）
+  - [x] Task 6.1: 渲染"数据概况（TripleWhale 专属）"Markdown 区块，追加到 `reports/triplewhale-raw.md` 末尾
+  - [x] Task 6.2: 表格列：表名 / 日期列 / 最早数据日期 / 总行数 / Rate Limit / 每次最大行数 / 全量拉取预估时长；无数据字段显示 `-`
 
 - [x] Task 3: 编写单元测试 `tests/test_triplewhale.py`（AC: 1-6）
   - [x] Task 3.1: 测试 `authenticate()` 成功路径（mock requests.get 返回 200）
@@ -591,6 +613,15 @@ claude-sonnet-4-6
 - [x] [Review][Defer] 未处理 `resp.json()` 的 JSONDecodeError [sources/triplewhale.py: _fetch_table] — deferred, 防御性编码，规范未要求
 - [x] [Review][Defer] `_get_api_key` KeyError 传播无 triplewhale 日志前缀 [sources/triplewhale.py: _get_api_key] — deferred, credentials 模块职责，get_credentials() 已保障
 
+### Review Findings（Correct Course 2026-04-07）
+
+- [x] [Review][Defer] 私有函数未对 table_name/date_col 做 SQL 参数校验 [sources/triplewhale.py: _fetch_earliest_date, _fetch_row_count] — deferred, 私有函数仅由 fetch_data_profile 调用且已通过校验；date_col 来自硬编码字典，非用户输入
+- [x] [Review][Defer] HTTP 5xx 静默返回 []，导致 _fetch_row_count 返回 0 而非 None（与 Task4.3 "失败→None" 有歧义）[sources/triplewhale.py: _fetch_row_count, _run_sql_query] — deferred, 与 _fetch_table 的 5xx→空列表设计一致；"失败→None" 指 Python 异常路径，5xx 属已处理的降级策略
+- [x] [Review][Defer] profiles 为空时 write_triplewhale_data_profile 仍写入仅含表头的区块 [reporter.py: write_triplewhale_data_profile] — deferred, 极端边界场景（10 张表全部探测失败）；header-only 是合法 Markdown，不影响功能
+- [x] [Review][Defer] _fetch_earliest_date 重复查 _TABLE_DATE_COLUMNS（调用方已查过）[sources/triplewhale.py: _fetch_earliest_date] — deferred, 防御性自包含私有函数；测试 test_no_date_column_returns_none 直接测试该路径，改签名会破坏测试
+- [x] [Review][Defer] RATE_LIMIT_RPM=0 时 estimated_pull_minutes 触发 ZeroDivisionError [sources/triplewhale.py: fetch_data_profile] — deferred, 硬编码常量=60，无业务路径可将其设为 0
+- [x] [Review][Defer] COUNT 查询失败时 total_rows 显示 0 而非 "-"（Task 6.2 无数据显示"-"）[reporter.py, validate.py] — deferred, 同 5xx 降级设计，无法区分"真正空表"与"查询瞬时失败"；可在后续质量轮次引入 sentinel 区分
+
 ### Review Findings（Correct Course 2026-04-04）
 
 - [x] [Review][Patch] 7 个新增 pytest fixture 无对应测试用例（未使用代码）[tests/test_triplewhale.py] — 已修复：移除全部 7 个未使用 fixture
@@ -600,3 +631,4 @@ claude-sonnet-4-6
 ## Change Log
 
 - 2026-04-03: Story 创建，状态 ready-for-dev
+- 2026-04-07: Correct Course — 新增 AC 8/9/10 + Task 4/5/6，增加 fetch_data_profile() 功能（最早数据时间 / rate limit / 全量拉取预估），状态回退为 ready-for-dev

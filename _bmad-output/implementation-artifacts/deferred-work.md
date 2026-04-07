@@ -44,6 +44,15 @@
 - `resp.json()` 未处理 JSONDecodeError [sources/triplewhale.py: _fetch_table] — 防御性编码，规范未要求；API 返回非 JSON 时 traceback 可见，不静默失败
 - `_get_api_key` KeyError 传播无 [triplewhale] 日志前缀 [sources/triplewhale.py: _get_api_key] — credentials 模块负责 ValueError，_get_api_key 职责明确；Epic 5 集成时统一添加错误层
 
+## Deferred from: code review of 2-1-triplewhale-数据源接入 Correct Course (2026-04-07)
+
+- 私有函数 _fetch_earliest_date/_fetch_row_count 未对 table_name/date_col 做 SQL 参数校验 [sources/triplewhale.py] — 私有函数仅由已校验的 fetch_data_profile 调用；date_col 来自硬编码字典，非用户输入
+- HTTP 5xx 静默返回 []，_fetch_row_count 返回 0 而非 None [sources/triplewhale.py: _run_sql_query, _fetch_row_count] — 与现有 _fetch_table 5xx 降级策略一致；引入 sentinel 区分"空表"与"查询失败"留待后续
+- profiles 为空时 write_triplewhale_data_profile 仍写表头 [reporter.py] — 极端边界场景；可在未来加 `if not profiles: return` 保护
+- _fetch_earliest_date 重复查 _TABLE_DATE_COLUMNS [sources/triplewhale.py] — 防御性自包含设计；改签名需同步测试
+- RATE_LIMIT_RPM=0 时触发 ZeroDivisionError [sources/triplewhale.py] — 常量硬编码=60，无触发路径
+- COUNT 查询失败时 total_rows 显示 0 而非 "-" [reporter.py, validate.py] — 同 5xx 降级；可引入 sentinel 或 None 值在报告层显示"-"
+
 ## Deferred from: code review of 2-1-triplewhale-数据源接入 Correct Course (2026-04-04)
 
 - `test_all_valid_tables_accepted` 路由断言为浅层（仅验证不抛 ValueError）[tests/test_triplewhale.py: TestFetchSample.test_all_valid_tables_accepted] — 超出 AC7 要求，属测试深度改进项；可在后续质量轮次中断言 call_args[0][0] == table_name
