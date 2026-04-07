@@ -147,7 +147,7 @@ def _get_tiktok_auth_via_dtc(app_key: str, app_secret: str) -> Tuple[str, str, L
     if not valid_shops:
         raise RuntimeError("DTC 返回的店铺列表中无有效凭证条目")
     shop = next(
-        (s for s in valid_shops if "Piscifun" in (s.get("shop_name") or "")),
+        (s for s in valid_shops if "Tidewe" in (s.get("shop_name") or "")),
         valid_shops[0],
     )
     access_token = shop.get("access_token")
@@ -450,7 +450,9 @@ def _fetch_return_refund(app_key: str, app_secret: str) -> List[Dict]:
     遍历 _all_shops 中的所有店铺，合并各店铺退款记录，返回第一批有数据的结果。
     若所有店铺均无退款，返回空列表。
     """
-    shops = _all_shops if _all_shops else [{"access_token": _access_token, "cipher": _shop_cipher, "shop_name": "default"}]
+    all_avail = _all_shops if _all_shops else [{"access_token": _access_token, "cipher": _shop_cipher, "shop_name": "default"}]
+    # 仅查询已授权的 Tidewe 店铺；无匹配时回退到全部店铺
+    shops = [s for s in all_avail if "Tidewe" in (s.get("shop_name") or "")] or all_avail
     logger.info(f"[tiktok] 获取退款样本（共 {len(shops)} 个店铺）...")
     all_records: List[Dict] = []
     for shop in shops:
