@@ -84,15 +84,18 @@ def fetch_sample(table_name: str = None) -> list[dict]:
 
             # 导航至营销活动列表页
             page.goto(CAMPAIGN_URL, timeout=20000)
-            # 等待第二个table（数据行）出现
-            page.wait_for_selector("table + table, tbody tr", timeout=20000)
 
             # 验证码检测
             if "captcha" in page.url.lower() or "captcha" in page.content().lower():
                 raise RuntimeError("[cartsee] 遇到验证码，请手动完成验证后重新运行")
 
-            # 等待数据表格加载
-            page.wait_for_selector("table, [class*='table'], [class*='campaign'], [class*='list']", timeout=15000)
+            # 等待数据行渲染完毕（Arco Design 异步渲染，需等 td 有实际文本）
+            page.wait_for_function(
+                "() => { const trs = document.querySelectorAll('table tbody tr'); "
+                "return trs.length > 0 && trs[0].querySelector('td') && "
+                "trs[0].querySelector('td').innerText.trim().length > 0; }",
+                timeout=20000
+            )
 
             records = _extract_table_records(page)
             if not records:
