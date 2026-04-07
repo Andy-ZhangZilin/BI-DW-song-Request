@@ -21,7 +21,8 @@ fetch_sample(table_name) 路由表（共 7 个，6 个有效接口 + 1 个暂无
   TIKTOK_PRODUCT_ID      — 商品 ID（可选，未配置时从 /product/202309/products/search 自动获取）
   TIKTOK_CAMPAIGN_ID     — 联盟活动 ID（可选，未配置时从 /authorization/202405/category_assets
                             + /affiliate_partner/202405/campaigns 两步自动获取）
-  TIKTOK_CREATOR_TEMP_ID — 达人临时 ID（必须手动配置，无法自动获取）
+  TIKTOK_CREATOR_TEMP_ID — 达人临时 ID（可选，未配置时从 /affiliate_creator/202410/orders/search
+                            返回的第一条订单中自动获取）
 """
 import hashlib
 import hmac
@@ -301,6 +302,55 @@ def _fetch_first_campaign_id(
         return None
 
 
+def _fetch_first_creator_temp_id(app_key: str, app_secret: str) -> Optional[str]:
+    """从达人订单列表中自动获取第一个 creator_temp_id。
+
+    调用 /affiliate_creator/202410/orders/search，取第一条订单的 creator_temp_id 字段。
+    .env 中已配置 TIKTOK_CREATOR_TEMP_ID 时优先使用配置值，不再调用此接口。
+
+    Returns:
+        creator_temp_id 字符串，或 None（接口异常/无订单时）
+    """
+    path = "/affiliate_creator/202410/orders/search"
+    payload: dict = {}
+    sign_params: dict = {
+        "app_key": app_key,
+        "timestamp": str(int(time.time()) - 60),
+        "page_size": "1",
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params, payload)
+    sign_params["access_token"] = _access_token
+    try:
+        resp = requests.post(
+            f"{BASE_URL}{path}",
+            params=sign_params,
+            json=payload,
+            headers=_api_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning(
+                f"[tiktok] 达人订单查询失败（获取 creator_temp_id）："
+                f"code={data.get('code')} {data.get('message')}"
+            )
+            return None
+        orders = (data.get("data") or {}).get("orders", [])
+        if not orders:
+            logger.warning("[tiktok] 达人订单列表为空，无法自动获取 creator_temp_id")
+            return None
+        creator_temp_id = orders[0].get("creator_temp_id")
+        if creator_temp_id:
+            logger.info(f"[tiktok] 自动获取 creator_temp_id={creator_temp_id}")
+        else:
+            logger.warning("[tiktok] 达人订单首条记录中无 creator_temp_id 字段")
+        return creator_temp_id
+    except Exception as e:
+        logger.warning(f"[tiktok] 自动获取 creator_temp_id 失败：{e}")
+        return None
+
+
 def _fetch_first_product_id(app_key: str, app_secret: str) -> Optional[str]:
     """从商品列表接口自动获取第一个上架商品的 ID。
 
@@ -571,7 +621,11 @@ def _fetch_affiliate_sample_status(app_key: str, app_secret: str) -> List[Dict]:
             campaign_id = _fetch_first_campaign_id(app_key, app_secret, cipher)
 
     if not creator_temp_id:
-        logger.warning("[tiktok] TIKTOK_CREATOR_TEMP_ID 未配置，affiliate_sample_status 跳过")
+        logger.info("[tiktok] TIKTOK_CREATOR_TEMP_ID 未配置，尝试从达人订单自动获取 ...")
+        creator_temp_id = _fetch_first_creator_temp_id(app_key, app_secret)
+
+    if not creator_temp_id:
+        logger.warning("[tiktok] 无法获取 creator_temp_id，affiliate_sample_status 跳过")
         return []
     if not campaign_id or not product_id:
         logger.warning(
