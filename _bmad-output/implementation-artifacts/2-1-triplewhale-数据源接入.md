@@ -26,6 +26,12 @@ Status: done
 
 7. **Given** 单元测试环境（mock get_credentials + fixture）；**When** 运行 `tests/test_triplewhale.py`；**Then** 所有单元测试通过，覆盖全部 10 张表的路由分支，不需要真实 API Key
 
+8. **Given** 认证成功后传入有效 `table_name`；**When** 调用 `fetch_data_profile(table_name)`；**Then** 返回含 `earliest_date`、`total_rows`、`rate_limit_rpm`、`max_rows_per_request`、`estimated_pull_minutes` 的字典，两次 SQL 查询（MIN + COUNT）均在 30s 超时内完成，日志输出 `[triplewhale] 探测 {table_name} 数据概况 ... 成功`
+
+9. **Given** 表当前无数据（如 `creatives_table` / `ai_visibility_table`）；**When** 调用 `fetch_data_profile(table_name)`；**Then** 返回 `earliest_date=None`、`total_rows=0`、`estimated_pull_minutes=None`，日志输出警告级别提示，不抛出异常
+
+10. **Given** validate.py 运行 triplewhale 流程；**When** 全部 10 张表的 `fetch_data_profile` 执行完成；**Then** reporter 将"数据概况"区块写入 `reports/triplewhale-raw.md`，包含每张表的最早数据日期、总行数、rate limit、预估拉取时长
+
 ## Tasks / Subtasks
 
 - [x] Task 1: 实现 `sources/triplewhale.py` 核心结构（AC: 1, 2, 3, 4, 5）
@@ -38,6 +44,22 @@ Status: done
 
 - [x] Task 2: 编写测试 Fixture `tests/fixtures/triplewhale_sample.json`（AC: 6）
   - [x] Task 2.1: 创建代表 pixel_orders_table 返回格式的模拟响应 JSON（含 data 列表，至少 2 条记录，覆盖 string/number/boolean/null 字段类型）
+
+- [ ] Task 4: 实现 `fetch_data_profile()` 及私有辅助函数（AC: 8, 9）
+  - [ ] Task 4.1: 在常量块追加 `RATE_LIMIT_RPM`、`MAX_ROWS_PER_REQUEST`、`_TABLE_DATE_COLUMNS`（基于 raw 报告确认的各表日期列名）
+  - [ ] Task 4.2: 实现 `_fetch_earliest_date(table_name, api_key) -> str | None`（SQL: `SELECT MIN({date_col}) as earliest FROM {table_name}`，无数据返回 None）
+  - [ ] Task 4.3: 实现 `_fetch_row_count(table_name, api_key) -> int | None`（SQL: `SELECT COUNT(*) as total FROM {table_name}`，失败返回 None）
+  - [ ] Task 4.4: 实现 `fetch_data_profile(table_name) -> dict`（调用上述两个私有函数，组装返回值，计算 `estimated_pull_minutes = ceil(total_rows / MAX_ROWS_PER_REQUEST) / RATE_LIMIT_RPM`）
+
+- [ ] Task 5: 新增单元测试覆盖 `fetch_data_profile`（AC: 8, 9）
+  - [ ] Task 5.1: `test_fetch_data_profile_success`（mock 两次 SQL 查询返回有效数据，验证字典结构和 estimated_pull_minutes 计算正确）
+  - [ ] Task 5.2: `test_fetch_data_profile_no_data`（mock COUNT 返回 0，验证 `estimated_pull_minutes=None`）
+  - [ ] Task 5.3: `test_fetch_data_profile_query_failure`（mock SQL 查询抛异常，验证返回 None 不传播异常）
+  - [ ] Task 5.4: `test_fetch_data_profile_invalid_table`（验证抛出 `ValueError`）
+
+- [ ] Task 6: 更新 `reporter.py` 新增 `write_triplewhale_data_profile(profiles: list[dict]) -> None`（AC: 10）
+  - [ ] Task 6.1: 渲染"数据概况（TripleWhale 专属）"Markdown 区块，追加到 `reports/triplewhale-raw.md` 末尾
+  - [ ] Task 6.2: 表格列：表名 / 日期列 / 最早数据日期 / 总行数 / Rate Limit / 每次最大行数 / 全量拉取预估时长；无数据字段显示 `-`
 
 - [x] Task 3: 编写单元测试 `tests/test_triplewhale.py`（AC: 1-6）
   - [x] Task 3.1: 测试 `authenticate()` 成功路径（mock requests.get 返回 200）
@@ -600,3 +622,4 @@ claude-sonnet-4-6
 ## Change Log
 
 - 2026-04-03: Story 创建，状态 ready-for-dev
+- 2026-04-07: Correct Course — 新增 AC 8/9/10 + Task 4/5/6，增加 fetch_data_profile() 功能（最早数据时间 / rate limit / 全量拉取预估），状态回退为 ready-for-dev
