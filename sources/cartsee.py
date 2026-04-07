@@ -8,7 +8,10 @@
     extract_fields(sample: list[dict]) -> list[dict]
 """
 import logging
-from playwright.sync_api import sync_playwright
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None  # type: ignore[assignment]
 from config.credentials import get_credentials, mask_credential
 
 logger = logging.getLogger(__name__)

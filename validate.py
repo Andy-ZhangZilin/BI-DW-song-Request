@@ -91,15 +91,21 @@ def _run_source(source_name: str, module: Any, table: Optional[str] = None) -> b
             reporter.init_validation_report(source_name)
         elif source_name == "tiktok":
             # tiktok 多接口路由：每个接口独立抓样本，后续追加 Section
+            # 单表异常不中断整体，记录错误后继续下一张表
             tables = [table] if table else TIKTOK_TABLES
-            for i, table_name in enumerate(tables):
+            written = 0
+            for table_name in tables:
                 logger.info(f"[{source_name}] 获取 {table_name} 样本 ...")
-                sample = module.fetch_sample(table_name)
-                fields = module.extract_fields(sample)
-                reporter.write_raw_report(
-                    source_name, fields, table_name, len(sample), append=(i > 0)
-                )
-                logger.info(f"[{source_name}] {table_name} ... 完成")
+                try:
+                    sample = module.fetch_sample(table_name)
+                    fields = module.extract_fields(sample)
+                    reporter.write_raw_report(
+                        source_name, fields, table_name, len(sample), append=(written > 0)
+                    )
+                    written += 1
+                    logger.info(f"[{source_name}] {table_name} ... 完成")
+                except Exception as table_err:
+                    logger.error(f"[{source_name}] {table_name} 失败，跳过：{table_err}")
             reporter.init_validation_report(source_name)
         else:
             logger.info(f"[{source_name}] 获取样本 ...")
