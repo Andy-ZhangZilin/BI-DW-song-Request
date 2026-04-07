@@ -14,7 +14,8 @@ fetch_sample(table_name) 路由表（共 7 个，6 个有效接口 + 1 个暂无
   affiliate_sample_status        → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
                                         products/{product_id}/creator/{creator_temp_id}/
                                         content/statistics/sample/status
-  affiliate_campaign_performance → GET  /affiliate_partner/202405/campaigns（活动列表）
+  affiliate_campaign_performance → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
+                                        products/{product_id}/performance
 
 含动态路径参数的接口会优先读取 .env 中的配置，未配置时按以下规则自动获取：
   TIKTOK_PRODUCT_ID      — 商品 ID（可选，未配置时从 /product/202309/products/search 自动获取）
@@ -592,27 +593,14 @@ def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]
             f"[tiktok] 店铺商品表现查询失败，code={data.get('code')}，message={data.get('message')}"
         )
     resp_data = data.get("data") or {}
-    # performance 是单个对象，展平其内层字段供 extract_fields 发现
-    # 结构：data.latest_available_date + data.performance.{intervals/ratings/top_contents/top_creators}
+    # performance 是单个对象，按 API 文档结构展平到顶层
+    # 文档定义：data.latest_available_date + data.performance.{intervals/ratings/top_contents/top_creators}
     performance = resp_data.get("performance")
     if not performance:
         logger.warning("[tiktok] 店铺商品表现查询返回空，字段发现将跳过")
         return []
-    # 将 performance 内层字段展平到顶层
     flat_record: dict = {"latest_available_date": resp_data.get("latest_available_date")}
-    # intervals: 取第一个区间的 start_date / end_date
-    intervals = performance.get("intervals") or []
-    if intervals:
-        flat_record["interval_start_date"] = intervals[0].get("start_date")
-        flat_record["interval_end_date"] = intervals[0].get("end_date")
-    # ratings: 按星级展平为 rating_Xstar_count / rating_Xstar_percentage
-    for item in performance.get("ratings") or []:
-        stars_key = (item.get("stars") or "").lower().replace("_star", "star")
-        flat_record[f"rating_{stars_key}_count"] = item.get("count")
-        flat_record[f"rating_{stars_key}_percentage"] = item.get("percentage")
-    # top_contents / top_creators: 保留数组（字段发现层面只需知道字段存在即可）
-    flat_record["top_contents"] = performance.get("top_contents")
-    flat_record["top_creators"] = performance.get("top_creators")
+    flat_record.update(performance)
     logger.info("[tiktok] 获取店铺商品表现 ... 成功（1 条记录，已展平 performance 字段）")
     return [flat_record]
 
@@ -683,36 +671,38 @@ def _fetch_affiliate_sample_status(app_key: str, app_secret: str) -> List[Dict]:
 
 
 def _fetch_affiliate_campaign_performance(app_key: str, app_secret: str) -> List[Dict]:
-    """GET /affiliate_partner/202405/campaigns — 联盟活动列表。
+    """GET /affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/performance
+    — 联盟活动履约状态。
 
-    按 API 文档返回字段：
-      id, name, status, registration_start_time, registration_end_time,
-      campaign_start_time, campaign_end_time
+    campaign_id 优先读 .env TIKTOK_CAMPAIGN_ID，未配置时通过 category_assets + campaigns 列表自动获取。
+    product_id 优先读 .env TIKTOK_PRODUCT_ID，未配置时自动从商品列表获取。
 
-    使用 category_asset_cipher（非 shop_cipher），未配置时自动从
-    /authorization/202405/category_assets 获取。
+    此接口使用 category_asset_cipher（非 shop_cipher）。
     """
-    logger.info("[tiktok] TIKTOK_CAMPAIGN_ID 未配置，尝试自动获取 ...")
-    cipher = _fetch_category_asset_cipher(app_key, app_secret)
-    if not cipher:
-        logger.warning("[tiktok] category_asset_cipher 获取失败，affiliate_campaign_performance 跳过")
+    campaign_id = _creds_module.get_optional_config("TIKTOK_CAMPAIGN_ID")
+    product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
+
+    if not product_id:
+        product_id = _fetch_first_product_id(app_key, app_secret)
+
+    if not campaign_id:
+        logger.info("[tiktok] TIKTOK_CAMPAIGN_ID 未配置，尝试自动获取 ...")
+        cipher = _fetch_category_asset_cipher(app_key, app_secret)
+        if cipher:
+            campaign_id = _fetch_first_campaign_id(app_key, app_secret, cipher)
+
+    if not campaign_id or not product_id:
+        logger.warning(
+            "[tiktok] campaign_id/product_id 获取失败，affiliate_campaign_performance 跳过"
+        )
         return []
 
-    path = "/affiliate_partner/202405/campaigns"
-    sign_params: dict = {
-        "app_key": app_key,
-        "category_asset_cipher": cipher,
-        "timestamp": str(int(time.time()) - 60),
-        "type": "MY_CAMPAIGNS",
-        "page_size": "20",
-    }
-    sign_params["sign"] = _sign_request(app_secret, path, sign_params)
-    sign_params["access_token"] = _access_token
-
-    logger.info("[tiktok] 获取联盟活动列表 ...")
+    path = f"/affiliate_partner/202508/campaigns/{campaign_id}/products/{product_id}/performance"
+    params = _build_signed_params(app_key, app_secret, path, include_shop_cipher=False)
+    logger.info("[tiktok] 获取联盟活动履约状态 ...")
     resp = requests.get(
         f"{BASE_URL}{path}",
-        params=sign_params,
+        params=params,
         headers=_api_headers(),
         timeout=REQUEST_TIMEOUT,
     )
@@ -720,22 +710,15 @@ def _fetch_affiliate_campaign_performance(app_key: str, app_secret: str) -> List
     data = resp.json()
     if data.get("code") != 0:
         raise RuntimeError(
-            f"[tiktok] 联盟活动列表查询失败，code={data.get('code')}，message={data.get('message')}"
+            f"[tiktok] 联盟活动履约状态查询失败，code={data.get('code')}，message={data.get('message')}"
         )
     resp_data = data.get("data") or {}
-    campaigns = resp_data.get("campaigns", [])
-    if not campaigns:
-        logger.warning("[tiktok] 联盟活动列表返回空，字段发现将跳过")
+    records = _extract_list_from_data(resp_data)
+    if not records:
+        logger.warning("[tiktok] 联盟活动履约状态返回空，字段发现将跳过")
         return []
-    # 严格按 API 文档字段过滤，只保留文档定义的字段
-    doc_fields = {
-        "id", "name", "status",
-        "registration_start_time", "registration_end_time",
-        "campaign_start_time", "campaign_end_time",
-    }
-    filtered = [{k: v for k, v in c.items() if k in doc_fields} for c in campaigns]
-    logger.info(f"[tiktok] 获取联盟活动列表 ... 成功（{len(filtered)} 条记录）")
-    return filtered
+    logger.info("[tiktok] 获取联盟活动履约状态 ... 成功")
+    return records
 
 
 # ---- 路由分发表 ----
