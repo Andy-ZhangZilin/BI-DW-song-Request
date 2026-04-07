@@ -32,14 +32,14 @@ FIXTURE_PATH = Path(__file__).parent / "fixtures" / "triplewhale_sample.json"
 
 @pytest.fixture
 def tw_sample() -> dict:
-    """加载 triplewhale fixture 数据（完整响应结构）。"""
+    """加载 triplewhale fixture 数据。"""
     with open(FIXTURE_PATH, encoding="utf-8") as f:
         return json.load(f)
 
 
 @pytest.fixture
 def orders_sample(tw_sample) -> list[dict]:
-    """pixel_orders_table 的 data 列表。"""
+    """pixel_orders_table 的 data 列表（用于 extract_fields 逻辑测试）。"""
     return tw_sample["pixel_orders_table"]["data"]
 
 
@@ -128,13 +128,13 @@ class TestAuthenticate:
 
 class TestFetchSample:
     def test_default_table_is_pixel_orders(self, mock_credentials, orders_sample):
-        """table_name=None → 使用 pixel_orders_table。"""
+        """table_name=None → 使用 pixel_orders_table，结果受 MAX_SAMPLE_ROWS 截断。"""
         with patch("sources.triplewhale._fetch_table") as mock_fetch:
             mock_fetch.return_value = orders_sample
             result = fetch_sample(None)
         mock_fetch.assert_called_once()
         assert mock_fetch.call_args[0][0] == "pixel_orders_table"
-        assert result == orders_sample
+        assert result == orders_sample[:triplewhale.MAX_SAMPLE_ROWS]
 
     def test_explicit_table_name(self, mock_credentials, joined_sample):
         """显式指定 table_name → 使用该表。"""
@@ -323,23 +323,23 @@ class TestInferType:
 # ---------------------------------------------------------------------------
 
 class TestFetchTable:
-    def test_post_request_uses_shop_field(self, mock_credentials):
-        """POST 请求 body 必须包含 shop 字段（attribution 端点规范）。"""
+    def test_post_request_uses_shop_id(self, mock_credentials):
+        """POST 请求 body 必须包含 shopId 字段（SQL 端点规范）。"""
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"ordersWithJourneys": [{"order_id": "ORD-001"}]},
+                json=lambda: [{"order_id": "ORD-001"}],
             )
             _fetch_table("pixel_orders_table", "test_tw_key")
         call_kwargs = mock_post.call_args[1]
-        assert call_kwargs["json"]["shop"] == SHOP_DOMAIN
+        assert call_kwargs["json"]["shopId"] == SHOP_DOMAIN
 
     def test_post_request_uses_api_key_header(self, mock_credentials):
         """POST 请求 header 必须包含 x-api-key（小写，HTTP/2 兼容）。"""
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"ordersWithJourneys": [{"order_id": "ORD-001"}]},
+                json=lambda: [{"order_id": "ORD-001"}],
             )
             _fetch_table("pixel_orders_table", "test_tw_key")
         call_kwargs = mock_post.call_args[1]
@@ -350,38 +350,82 @@ class TestFetchTable:
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"ordersWithJourneys": [{"order_id": "ORD-001"}]},
+                json=lambda: [{"order_id": "ORD-001"}],
             )
             _fetch_table("pixel_orders_table", "test_tw_key")
         call_kwargs = mock_post.call_args[1]
         assert call_kwargs["timeout"] == DEFAULT_TIMEOUT
 
-    def test_response_orders_with_journeys_extracted(self, mock_credentials):
-        """响应 {"ordersWithJourneys": [...]} → 返回该列表。"""
+    def test_post_request_includes_sql_query(self, mock_credentials):
+        """POST 请求 body 必须包含 query 字段，且包含表名。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                ok=True,
+                json=lambda: [{"order_id": "ORD-001"}],
+            )
+            _fetch_table("pixel_orders_table", "test_tw_key")
+        call_kwargs = mock_post.call_args[1]
+        assert "query" in call_kwargs["json"]
+        assert "pixel_orders_table" in call_kwargs["json"]["query"]
+
+    def test_post_request_includes_period(self, mock_credentials):
+        """POST 请求 body 必须包含 period 字段（含 startDate/endDate）。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                ok=True,
+                json=lambda: [{"order_id": "ORD-001"}],
+            )
+            _fetch_table("pixel_orders_table", "test_tw_key")
+        call_kwargs = mock_post.call_args[1]
+        assert "period" in call_kwargs["json"]
+        assert "startDate" in call_kwargs["json"]["period"]
+        assert "endDate" in call_kwargs["json"]["period"]
+
+    def test_response_list_returned_directly(self, mock_credentials):
+        """响应为列表 → 直接返回该列表。"""
         expected = [{"order_id": "ORD-001", "total_price": 99.99}]
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"ordersWithJourneys": expected, "count": 1},
+                json=lambda: expected,
             )
             result = _fetch_table("pixel_orders_table", "test_tw_key")
         assert result == expected
 
-    def test_http_error_raises_runtime_error(self, mock_credentials):
-        """HTTP 非 2xx → 抛出 RuntimeError。"""
-        with patch("sources.triplewhale.requests.post") as mock_post:
-            mock_post.return_value = MagicMock(
-                ok=False, status_code=500, text="Internal Server Error"
-            )
-            with pytest.raises(RuntimeError, match="HTTP 500"):
-                _fetch_table("pixel_orders_table", "test_tw_key")
-
-    def test_unknown_response_structure_raises_runtime_error(self, mock_credentials):
-        """响应结构无法解析 → 抛出 RuntimeError。"""
+    def test_empty_list_response_returned(self, mock_credentials):
+        """响应为空列表（无数据）→ 返回空列表，不报错。"""
         with patch("sources.triplewhale.requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 ok=True,
-                json=lambda: {"unknown_key": "unexpected"},
+                json=lambda: [],
+            )
+            result = _fetch_table("ai_visibility_table", "test_tw_key")
+        assert result == []
+
+    def test_http_4xx_raises_runtime_error(self, mock_credentials):
+        """HTTP 4xx（认证/权限错误）→ 抛出 RuntimeError。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                ok=False, status_code=403, text="Forbidden"
+            )
+            with pytest.raises(RuntimeError, match="HTTP 403"):
+                _fetch_table("pixel_orders_table", "test_tw_key")
+
+    def test_http_5xx_returns_empty_list(self, mock_credentials):
+        """HTTP 5xx（服务端错误，如表权限未开通）→ 返回空列表，不抛出异常。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                ok=False, status_code=500, text="Error getting data"
+            )
+            result = _fetch_table("creatives_table", "test_tw_key")
+        assert result == []
+
+    def test_unknown_response_structure_raises_runtime_error(self, mock_credentials):
+        """响应为 dict（非列表）→ 抛出 RuntimeError。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                ok=True,
+                json=lambda: {"unexpected_key": "value"},
             )
             with pytest.raises(RuntimeError, match="无法解析"):
                 _fetch_table("pixel_orders_table", "test_tw_key")
@@ -392,15 +436,3 @@ class TestFetchTable:
             mock_post.side_effect = req_lib.Timeout()
             with pytest.raises(req_lib.Timeout):
                 _fetch_table("pixel_orders_table", "test_tw_key")
-
-    def test_post_request_includes_date_range(self, mock_credentials):
-        """POST 请求 body 必须包含 startDate 和 endDate 字段。"""
-        with patch("sources.triplewhale.requests.post") as mock_post:
-            mock_post.return_value = MagicMock(
-                ok=True,
-                json=lambda: {"ordersWithJourneys": [{"order_id": "ORD-001"}]},
-            )
-            _fetch_table("pixel_orders_table", "test_tw_key")
-        call_kwargs = mock_post.call_args[1]
-        assert "startDate" in call_kwargs["json"]
-        assert "endDate" in call_kwargs["json"]

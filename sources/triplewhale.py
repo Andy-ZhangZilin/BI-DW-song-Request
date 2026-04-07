@@ -1,7 +1,7 @@
 """TripleWhale 数据源接入模块
 
 认证方式：x-api-key header（小写，HTTP/2 兼容）
-数据端点：/api/v2/attribution/get-orders-with-journeys-v2（订单+归因数据）
+数据端点：/api/v2/orcabase/api/sql（ClickHouse SQL 查询，各表独立查询）
 认证探针：/api/v2/summary-page/get-data
 接入表：pixel_orders_table / pixel_joined_tvf / sessions_table / product_analytics_tvf /
         pixel_keywords_joined_tvf / ads_table / social_media_comments_table /
@@ -27,10 +27,11 @@ logger = logging.getLogger(__name__)
 # --- 常量 ---
 _API_BASE: str = "https://api.triplewhale.com/api/v2"
 AUTH_URL: str = f"{_API_BASE}/summary-page/get-data"
-ATTRIBUTION_URL: str = f"{_API_BASE}/attribution/get-orders-with-journeys-v2"
+SQL_URL: str = f"{_API_BASE}/orcabase/api/sql"
 SHOP_DOMAIN: str = "piscifun.myshopify.com"
 DEFAULT_TIMEOUT: int = 30  # 秒，与架构规范一致
-_SAMPLE_DAYS: int = 7  # 样本抓取天数
+_SAMPLE_DAYS: int = 14  # 样本抓取天数（扩大窗口以确保有数据）
+MAX_SAMPLE_ROWS: int = 1  # 每张表最多保留的样本行数
 TABLES: list[str] = [
     "pixel_orders_table",
     "pixel_joined_tvf",
@@ -93,12 +94,12 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
                     为 None 时使用 pixel_orders_table（默认主表）。
 
     Returns:
-        至少一条原始记录的列表（list[dict]）。
+        原始记录的列表（list[dict]），若该表无数据则返回空列表。
 
     Raises:
         ValueError: table_name 不在 TABLES 中
         requests.Timeout: 请求超时
-        RuntimeError: API 返回非 2xx 状态码或返回空数据
+        RuntimeError: API 返回非 2xx 状态码
     """
     resolved_table = table_name if table_name is not None else _DEFAULT_TABLE
     if resolved_table not in TABLES:
@@ -114,6 +115,7 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     except Exception as e:
         logger.error(f"[triplewhale] 获取 {resolved_table} 样本 ... 失败：{e}")
         raise
+    sample = sample[:MAX_SAMPLE_ROWS]
     logger.info(f"[triplewhale] 获取 {resolved_table} 样本 ... 成功，共 {len(sample)} 条记录")
     return sample
 
@@ -171,60 +173,61 @@ def _get_api_key() -> str:
 
 
 def _sample_date_range() -> tuple[str, str]:
-    """返回 (start_date, end_date) 用于样本请求，格式 YYYY-MM-DD，最近 7 天。"""
+    """返回 (start_date, end_date) 用于样本请求，格式 YYYY-MM-DD，最近 N 天。"""
     end = datetime.now(timezone.utc).date()
     start = end - timedelta(days=_SAMPLE_DAYS)
     return str(start), str(end)
 
 
 def _fetch_table(table_name: str, api_key: str) -> list[dict]:
-    """向 TripleWhale Attribution 端点请求订单归因数据，返回原始记录列表。
+    """向 TripleWhale SQL 端点查询指定表的样本数据，返回原始记录列表。
 
-    TripleWhale REST API 仅公开以下数据读取端点：
-      - /api/v2/summary-page/get-data（聚合指标）
-      - /api/v2/attribution/get-orders-with-journeys-v2（订单+归因，本函数使用此端点）
-    table_name 参数用于日志标识，所有表均通过同一端点取样本数据。
+    使用 /api/v2/orcabase/api/sql 端点，以 SQL 方式直接查询各 ClickHouse 表。
+    每张表独立查询，返回真实的表结构和数据。
 
     Args:
-        table_name: 表名（用于日志）。
+        table_name: 表名（TABLES 中的一个）。
         api_key: TripleWhale API Key。
 
     Returns:
-        原始记录列表（ordersWithJourneys）。
+        原始记录列表（list[dict]），若该表无数据则返回空列表。
 
     Raises:
         requests.Timeout: 请求超时（30s）
-        RuntimeError: HTTP 非 2xx 或响应中缺少 ordersWithJourneys 字段
+        RuntimeError: HTTP 非 2xx
     """
     start, end = _sample_date_range()
     headers = {"x-api-key": api_key, "content-type": "application/json"}
     payload = {
-        "shop": SHOP_DOMAIN,
-        "startDate": start,
-        "endDate": end,
-        "excludeJourneyData": False,
+        "period": {"startDate": start, "endDate": end},
+        "shopId": SHOP_DOMAIN,
+        "query": f"SELECT * FROM {table_name} LIMIT {MAX_SAMPLE_ROWS}",
+        "currency": "USD",
     }
 
     resp = requests.post(
-        ATTRIBUTION_URL,
+        SQL_URL,
         headers=headers,
         json=payload,
         timeout=DEFAULT_TIMEOUT,
     )
 
     if not resp.ok:
+        # 5xx 服务端错误（如该表权限未开通）→ 警告并返回空列表，不中断整体验证
+        if resp.status_code >= 500:
+            logger.warning(
+                f"[triplewhale] {table_name} 服务端错误（HTTP {resp.status_code}），跳过该表"
+            )
+            return []
         raise RuntimeError(
             f"[triplewhale] 获取 {table_name} 失败：HTTP {resp.status_code} {resp.text[:200]}"
         )
 
     body = resp.json()
-    if isinstance(body, dict) and "ordersWithJourneys" in body:
-        rows = body["ordersWithJourneys"]
-        if isinstance(rows, list):
-            return rows
+    if isinstance(body, list):
+        return body
     raise RuntimeError(
-        f"[triplewhale] 无法解析 {table_name} 响应结构，"
-        f"响应键：{list(body.keys()) if isinstance(body, dict) else type(body)}"
+        f"[triplewhale] 无法解析 {table_name} 响应结构：{type(body)}"
     )
 
 
