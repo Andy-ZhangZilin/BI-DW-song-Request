@@ -38,9 +38,9 @@ logger = logging.getLogger(__name__)
 FB_LOGIN_URL = "https://business.facebook.com/business/loginpage"
 POSTS_URL = "https://business.facebook.com/latest/posts/published_posts"
 
-# 超时设置（Story 4.5 AC 明确指定，比其他爬虫更长）
-PAGE_WAIT_TIMEOUT_MS = 20_000  # 20 秒
-TOTAL_TIMEOUT_S = 90            # 90 秒
+# 超时设置（Facebook 页面加载较慢，需要更长超时）
+PAGE_WAIT_TIMEOUT_MS = 60_000  # 60 秒
+TOTAL_TIMEOUT_S = 180           # 180 秒
 
 # 最大样本行数
 MAX_SAMPLE_ROWS = 20
@@ -171,8 +171,8 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             _check_total_timeout(start_time)
 
             # Step 4: 导航至帖子和 Reels 页面
-            page.goto(POSTS_URL, timeout=PAGE_WAIT_TIMEOUT_MS)
-            page.wait_for_load_state("networkidle", timeout=PAGE_WAIT_TIMEOUT_MS)
+            page.goto(POSTS_URL, timeout=PAGE_WAIT_TIMEOUT_MS, wait_until="domcontentloaded")
+            page.wait_for_load_state("domcontentloaded", timeout=PAGE_WAIT_TIMEOUT_MS)
 
             # Step 5: 再次检测验证码 + 超时（帖子页导航后）
             _check_captcha(page)
@@ -259,11 +259,11 @@ def _is_empty(value) -> bool:
 
 
 def _login(page, username: str, password: str) -> None:
-    """在已打开的 page 上完成 Meta Business Suite 两步登录。
+    """在已打开的 page 上完成 Meta Business Suite 登录。
 
-    步骤 1：打开 Business Suite 登录入口（FB_LOGIN_URL），点击"使用 Facebook 登录"按钮，
-            此操作会弹出一个新的 Facebook 登录弹窗（popup）。
-    步骤 2：在弹窗中填入账号密码，点击登录，弹窗关闭后原页面自动跳转回 Business Suite。
+    支持两种登录路径（自动探测）：
+      A) 页面直接展示邮箱/密码输入框 — 直接填写提交。
+      B) 页面右侧展示"使用 Facebook 登录"按钮 — 点击后弹出 popup 窗口填写。
 
     Args:
         page: Playwright Page 对象（已创建，未导航）。
@@ -275,27 +275,36 @@ def _login(page, username: str, password: str) -> None:
         RuntimeError: 登录后仍停留在登录页（凭证错误或其他拦截）。
     """
     # 步骤 1：打开 Business Suite 登录入口
-    page.goto(FB_LOGIN_URL, timeout=PAGE_WAIT_TIMEOUT_MS)
+    page.goto(FB_LOGIN_URL, timeout=PAGE_WAIT_TIMEOUT_MS, wait_until="domcontentloaded")
 
-    # 步骤 2：点击"使用 Facebook 登录"，捕获弹出的登录窗口（popup）
-    with page.expect_popup(timeout=PAGE_WAIT_TIMEOUT_MS) as popup_info:
-        try:
-            page.click("text=使用 Facebook 登录", timeout=PAGE_WAIT_TIMEOUT_MS)
-        except Exception:
+    # 步骤 2：探测登录方式 — 页面内直接输入 vs. popup 弹窗
+    email_input = page.locator("input[name='email']")
+    try:
+        email_input.wait_for(state="visible", timeout=10_000)
+        # 路径 A：页面内直接有输入框，直接填写
+        logger.info("[social_media] 登录路径 A：页面内直接输入")
+        page.fill("input[name='email']", username)
+        page.fill("input[name='pass']", password)
+        page.click("button[name='login'], button[type='submit']")
+    except Exception:
+        # 路径 B：需要点击"使用 Facebook 登录"按钮触发 popup
+        logger.info("[social_media] 登录路径 B：popup 弹窗登录")
+        with page.expect_popup(timeout=PAGE_WAIT_TIMEOUT_MS) as popup_info:
             try:
-                page.get_by_role("link", name="使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
+                page.click("text=使用 Facebook 登录", timeout=PAGE_WAIT_TIMEOUT_MS)
             except Exception:
-                page.get_by_text("使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
+                try:
+                    page.get_by_role("link", name="使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
+                except Exception:
+                    page.get_by_text("使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
 
-    popup = popup_info.value
+        popup = popup_info.value
+        popup.wait_for_selector("input[name='email']", timeout=PAGE_WAIT_TIMEOUT_MS)
+        popup.fill("input[name='email']", username)
+        popup.fill("input[name='pass']", password)
+        popup.click("button[name='login']")
 
-    # 步骤 3：在弹窗中填入 Facebook 账号密码
-    popup.wait_for_selector("input[name='email']", timeout=PAGE_WAIT_TIMEOUT_MS)
-    popup.fill("input[name='email']", username)
-    popup.fill("input[name='pass']", password)
-    popup.click("button[name='login']")
-
-    # 步骤 4：等待原页面跳转回 Business Suite（弹窗登录成功后自动跳转）
+    # 步骤 3：等待跳转回 Business Suite 主页面
     page.wait_for_url("**/latest/**", timeout=PAGE_WAIT_TIMEOUT_MS)
 
     # 验证确实离开了登录页（凭证错误/2FA 重定向时 URL 可能误匹配）
