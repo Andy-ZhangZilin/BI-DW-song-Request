@@ -31,7 +31,8 @@ _API_BASE: str = "https://api.triplewhale.com/api/v2"
 AUTH_URL: str = f"{_API_BASE}/summary-page/get-data"
 SQL_URL: str = f"{_API_BASE}/orcabase/api/sql"
 SHOP_DOMAIN: str = "piscifun.myshopify.com"
-DEFAULT_TIMEOUT: int = 30  # 秒，与架构规范一致
+DEFAULT_TIMEOUT: int = 30   # 秒，sample 查询超时
+PROFILE_TIMEOUT: int = 120  # 秒，MIN/COUNT 等 profile 查询超时（数据量大，耗时较长）
 _SAMPLE_DAYS: int = 14  # 样本抓取天数（扩大窗口以确保有数据）
 MAX_SAMPLE_ROWS: int = 1  # 每张表最多保留的样本行数
 TABLES: list[str] = [
@@ -439,7 +440,7 @@ def _fetch_row_count_chunked(table_name: str, api_key: str) -> Optional[int]:
     return total
 
 
-def _run_sql_query(query: str, api_key: str) -> list[dict]:
+def _run_sql_query(query: str, api_key: str, timeout: int = PROFILE_TIMEOUT) -> list[dict]:
     """向 TripleWhale SQL 端点执行任意 SQL 查询，返回结果列表。
 
     使用全历史时间范围（_PROFILE_START_DATE 至今）以确保聚合查询覆盖所有数据。
@@ -447,12 +448,13 @@ def _run_sql_query(query: str, api_key: str) -> list[dict]:
     Args:
         query: SQL 查询字符串（如 SELECT MIN(...) / SELECT COUNT(*) 等）。
         api_key: TripleWhale API Key。
+        timeout: 请求超时秒数，默认 PROFILE_TIMEOUT（120s）。
 
     Returns:
         结果记录列表（list[dict]），无结果时返回空列表。
 
     Raises:
-        requests.Timeout: 请求超时（30s）
+        requests.Timeout: 请求超时
         RuntimeError: HTTP 4xx 错误
     """
     end_date = str(datetime.now(timezone.utc).date())
@@ -468,7 +470,7 @@ def _run_sql_query(query: str, api_key: str) -> list[dict]:
         SQL_URL,
         headers=headers,
         json=payload,
-        timeout=DEFAULT_TIMEOUT,
+        timeout=timeout,
     )
 
     if not resp.ok:
