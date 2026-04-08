@@ -28,6 +28,9 @@ SOURCE_NAME = "dingtalk"
 _cached_token: str | None = None
 _token_expiry: float = 0.0
 
+# /fields 接口返回的官方列顺序（fetch_sample 调用后填充，供 extract_fields 排序用）
+_field_order: list[str] = []
+
 _TOKEN_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
 _NOTABLE_BASE = "https://api.dingtalk.com/v1.0/notable/bases"
 
@@ -96,6 +99,7 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
 
     使用 notable API（/v1.0/notable/bases/...）分页拉取，
     自动解析复合字段值（URL / 单选 / 多选 / 人员等）。
+    同时调用 /fields 接口获取官方列顺序，存入模块变量供 extract_fields 使用。
 
     Args:
         table_name: 未使用，保留以对齐公共接口签名。
@@ -103,6 +107,7 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     Returns:
         记录列表，每条记录为 {列名: 标量值} 的字典。空表返回 []。
     """
+    global _field_order
     token = _load_token()
     creds = _creds_module.get_credentials()
     base_id = creds["DINGTALK_WORKBOOK_ID"]
@@ -134,6 +139,19 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             sheet_id = matched["id"]
         else:
             sheet_id = sheets[0]["id"]
+
+    # 拉取 /fields 获取官方列顺序（失败不阻断主流程）
+    try:
+        resp_fields = requests.get(
+            f"{_NOTABLE_BASE}/{base_id}/sheets/{sheet_id}/fields",
+            headers=headers, params=params_base, timeout=30,
+        )
+        resp_fields.raise_for_status()
+        _field_order = [f["name"] for f in resp_fields.json().get("value", [])]
+        logger.debug(f"[{SOURCE_NAME}] 获取到 {len(_field_order)} 个字段顺序定义")
+    except Exception as fe:
+        logger.warning(f"[{SOURCE_NAME}] 获取字段顺序失败，将按记录顺序输出：{fe}")
+        _field_order = []
 
     # 分页拉取全量记录
     all_records: list[dict] = []
@@ -171,14 +189,22 @@ def extract_fields(sample: list[dict]) -> list[dict]:
     if not sample:
         return []
 
-    # 保序去重收集所有列名
-    all_keys: list[str] = []
+    # 保序去重收集所有列名（来自记录数据）
+    record_keys: list[str] = []
     seen: set[str] = set()
     for record in sample:
         for key in record:
             if key not in seen:
-                all_keys.append(key)
+                record_keys.append(key)
                 seen.add(key)
+
+    # 按 /fields 官方顺序排列；records 中有但 /fields 没有的列追加到末尾
+    if _field_order:
+        ordered = [k for k in _field_order if k in seen]
+        tail = [k for k in record_keys if k not in set(_field_order)]
+        all_keys = ordered + tail
+    else:
+        all_keys = record_keys
 
     fields = []
     for key in all_keys:
