@@ -16,6 +16,7 @@
     日志输出凭证时必须使用 mask_credential()，禁止输出完整密码/Token。
 """
 import logging
+import os
 import time
 from typing import Optional
 
@@ -101,7 +102,7 @@ def authenticate() -> bool:
     browser = None
     with sync_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED") != "1")
             page = browser.new_page()
             _login(page, username, password)
 
@@ -158,7 +159,7 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     browser = None
     with sync_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED") != "1")
             page = browser.new_page()
 
             # Step 1: 登录
