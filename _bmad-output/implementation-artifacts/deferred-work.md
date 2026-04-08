@@ -101,3 +101,14 @@
 - `--all` 测试中 social_media 使用正常 mock，未体现真实 NotImplementedError [tests/test_e2e.py:47] — 属设计决策（Dev Notes 明确），如需验证真实行为可在 AC3 相关测试中补充
 - AC4 未覆盖 triplewhale 多表场景下 validation.md 保护 — 超出规格要求的额外覆盖，可在后续扩展测试时补充
 - AC2/AC3 未测试 `authenticate()` 直接抛异常场景 — AC2 规格仅要求"返回 False"场景，异常场景已由 test_validate.py AC7 部分覆盖
+
+## Deferred from: code review of 4-5-facebook-business-suite-爬虫数据源接入 (2026-04-08)
+
+- FACEBOOK 凭证强制全局注册 [config/credentials.py] — 与其他 11 个数据源凭证注册方式一致，项目设计如此
+- `sync_playwright` None 检查缺失（Playwright 未安装时 TypeError）[sources/social_media.py] — 与 awin.py/cartsee.py 等相同模式
+- `PlaywrightTimeoutError = Exception` fallback 导致异常过度捕获 [sources/social_media.py] — 与 awin.py 相同模式
+- CAPTCHA 检测可能对含关键词的帖子正文误报 [sources/social_media.py `_check_captcha()`] — 与 awin.py 相同 innerText 检测方案，设计限制
+- 90s 总超时未覆盖 `_extract_post_rows` 内部等待 [sources/social_media.py] — 与 awin.py 两点检测设计一致
+- 空样本仅 warning 不抛异常 [sources/social_media.py `fetch_sample()`] — 与 awin.py 相同
+- `authenticate()` 和 `fetch_sample()` 各自独立登录，无会话复用 [sources/social_media.py] — 与 awin.py/cartsee.py 设计一致
+- ARIA 分支按位置映射字段，列序错误时静默产生错误数据 [sources/social_media.py `_extract_post_rows()`] — 动态 SPA 页面结构未知，fallback 设计限制
