@@ -17,6 +17,8 @@ TEST_CREDENTIALS: dict[str, str] = {
     "CARTSEE_PASSWORD": "test_cartsee_pass",
     "PARTNERBOOST_USERNAME": "test_pb_user",
     "PARTNERBOOST_PASSWORD": "test_pb_pass",
+    "FACEBOOK_USERNAME": "test_fb_user",
+    "FACEBOOK_PASSWORD": "test_fb_pass",
 }
 
 
