@@ -234,7 +234,7 @@ def test_fetch_sample_has_integration_marker():
 
 
 @pytest.mark.integration
-def test_fetch_sample_integration(mock_credentials):
+def test_fetch_sample_integration():
     """集成测试：需要真实 PartnerBoost 账号和网络，通过 -m integration 单独运行。"""
     sample = partnerboost.fetch_sample()
     assert isinstance(sample, list)

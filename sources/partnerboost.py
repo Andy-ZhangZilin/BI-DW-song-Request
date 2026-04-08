@@ -22,14 +22,17 @@ import config.credentials as _creds_module
 logger = logging.getLogger(__name__)
 
 SOURCE_NAME = "partnerboost"
-LOGIN_URL = "https://app.partnerboost.com/login"
-REPORTS_URL = "https://app.partnerboost.com/reports"
+LOGIN_URL = "https://app.partnerboost.com/brand/login"
+REPORTS_URL = "https://app.partnerboost.com/brand/reports/performance"
 
 # 验证码关键词（大小写不敏感）
 _CAPTCHA_KEYWORDS = ["captcha", "robot", "verify you are human"]
 
-# 页面等待超时：15s（来自 ARCH10）
-_PAGE_TIMEOUT = 15_000
+# 页面等待超时：30s（PartnerBoost SPA 加载较慢）
+_PAGE_TIMEOUT = 30_000
+
+# Chromium 启动参数（兼容无桌面环境的 Linux 服务器）
+_BROWSER_ARGS = ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
 
 
 def _check_captcha(content: str) -> None:
@@ -53,15 +56,20 @@ def authenticate() -> bool:
     logger.debug(f"[{SOURCE_NAME}] 使用账号：{_creds_module.mask_credential(username)}")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=_BROWSER_ARGS)
         page = browser.new_page()
         try:
-            page.goto(LOGIN_URL, timeout=_PAGE_TIMEOUT)
-            page.fill("input[name=email]", username)
+            page.goto(LOGIN_URL, timeout=_PAGE_TIMEOUT, wait_until="domcontentloaded")
+            page.wait_for_selector("input[name=username]", timeout=_PAGE_TIMEOUT)
+            page.fill("input[name=username]", username)
             page.fill("input[name=password]", password)
-            page.click("button[type=submit]")
+            page.click('button:has-text("Log In")')
             # 等待跳离登录页（使用 lambda 谓词，避免 glob 不支持 (a|b) 交替语法）
-            page.wait_for_url(lambda url: "login" not in url, timeout=_PAGE_TIMEOUT)
+            page.wait_for_url(
+                lambda url: "login" not in url,
+                timeout=_PAGE_TIMEOUT,
+                wait_until="domcontentloaded",
+            )
             logger.info(f"[{SOURCE_NAME}] 认证 ... 成功")
             return True
         except Exception as e:
@@ -92,25 +100,28 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     password = creds["PARTNERBOOST_PASSWORD"]
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=_BROWSER_ARGS)
         page = browser.new_page()
         try:
             # ── 登录 ──────────────────────────────────────────────────────────
-            page.goto(LOGIN_URL, timeout=_PAGE_TIMEOUT)
-            page.fill("input[name=email]", username)
+            page.goto(LOGIN_URL, timeout=_PAGE_TIMEOUT, wait_until="domcontentloaded")
+            page.wait_for_selector("input[name=username]", timeout=_PAGE_TIMEOUT)
+            page.fill("input[name=username]", username)
             page.fill("input[name=password]", password)
-            page.click("button[type=submit]")
+            page.click('button:has-text("Log In")')
             # 等待跳离登录页（lambda 谓词，避免 glob (a|b) 非标准语法）
-            page.wait_for_url(lambda url: "login" not in url, timeout=_PAGE_TIMEOUT)
-            # 等待页面稳定后再检测验证码
-            page.wait_for_load_state("networkidle", timeout=_PAGE_TIMEOUT)
+            page.wait_for_url(
+                lambda url: "login" not in url,
+                timeout=_PAGE_TIMEOUT,
+                wait_until="domcontentloaded",
+            )
 
             # 登录后验证码检测
             _check_captcha(page.content())
 
             # ── 导航至报表页 ──────────────────────────────────────────────────
-            page.goto(REPORTS_URL, timeout=_PAGE_TIMEOUT)
-            page.wait_for_load_state("networkidle", timeout=_PAGE_TIMEOUT)
+            page.goto(REPORTS_URL, timeout=_PAGE_TIMEOUT, wait_until="domcontentloaded")
+            page.wait_for_selector("table", timeout=_PAGE_TIMEOUT)
 
             # 报表页验证码检测
             _check_captcha(page.content())
