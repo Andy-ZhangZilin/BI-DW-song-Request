@@ -374,8 +374,8 @@ def _login(page, username: str, password: str) -> None:
         page.click("input[name='pass']")
         page.type("input[name='pass']", password, delay=100)
         time.sleep(1)
-        logger.info("[social_media] 凭证已输入，点击登录")
-        _click_login_button(page)
+        logger.info("[social_media] 凭证已输入，按 Enter 提交")
+        page.keyboard.press("Enter")
     except Exception:
         # 路径 B：需要点击"使用 Facebook 登录"按钮触发 popup
         logger.info("[social_media] 登录路径 B：popup 弹窗登录")
@@ -398,9 +398,8 @@ def _login(page, username: str, password: str) -> None:
         popup.click("input[name='pass']")
         popup.type("input[name='pass']", password, delay=100)
         time.sleep(1)
-        logger.info("[social_media] 凭证已输入，点击登录")
-        # 多种选择器尝试点击登录按钮
-        _click_login_button(popup)
+        logger.info("[social_media] 凭证已输入，按 Enter 提交")
+        popup.keyboard.press("Enter")
 
     # 步骤 3：等待登录完成（可能需要人机验证）
     # 给 180 秒，足够用户在 headed 模式下手动完成 reCAPTCHA
@@ -410,36 +409,6 @@ def _login(page, username: str, password: str) -> None:
     # 验证确实离开了登录页（凭证错误/2FA 重定向时 URL 可能误匹配）
     if "login" in page.url.lower():
         raise RuntimeError("[social_media] 登录后仍停留在登录页，凭证可能无效")
-
-
-def _click_login_button(target_page) -> None:
-    """用多种选择器尝试点击登录按钮。
-
-    Facebook 登录按钮可能是 button[name='login']、button[type='submit']、
-    或带有"登录"/"Log In" 文字的按钮/链接。逐一尝试直到成功。
-
-    Args:
-        target_page: Playwright Page 对象（主页面或 popup）。
-    """
-    selectors = [
-        ("button[name='login']", "button[name='login']"),
-        ("button[type='submit']", "button[type='submit']"),
-        ("button:has-text('登录')", "button 包含「登录」"),
-        ("#loginbutton", "#loginbutton"),
-        ("input[type='submit']", "input[type='submit']"),
-    ]
-    for selector, desc in selectors:
-        try:
-            el = target_page.locator(selector).first
-            if el.is_visible(timeout=2000):
-                logger.info(f"[social_media] 点击登录按钮：{desc}")
-                el.click(no_wait_after=True)
-                return
-        except Exception:
-            continue
-    # 最后兜底：用 JavaScript 直接提交表单
-    logger.info("[social_media] 选择器均未匹配，使用 JS 提交表单")
-    target_page.evaluate("document.querySelector('form').submit()")
 
 
 def _check_captcha(page) -> None:
