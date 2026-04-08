@@ -15,9 +15,11 @@
 安全规范（NFR2）：
     日志输出凭证时必须使用 mask_credential()，禁止输出完整密码/Token。
 """
+import json
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Optional
 
 # playwright 仅在实际调用时导入，避免顶层 import 在不支持 greenlet 的环境下报错
@@ -42,6 +44,10 @@ POSTS_URL = "https://business.facebook.com/latest/posts/published_posts"
 # 超时设置（Facebook 页面加载较慢，需要更长超时）
 PAGE_WAIT_TIMEOUT_MS = 60_000  # 60 秒
 TOTAL_TIMEOUT_S = 180           # 180 秒
+
+# Session 持久化文件路径（保存在项目根目录 .sessions/ 下）
+SESSION_DIR = Path(__file__).resolve().parent.parent / ".sessions"
+SESSION_FILE = SESSION_DIR / "facebook_state.json"
 
 # 最大样本行数
 MAX_SAMPLE_ROWS = 20
@@ -102,9 +108,25 @@ def authenticate() -> bool:
     browser = None
     with sync_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED") != "1")
-            page = browser.new_page()
+            headless = os.environ.get("PLAYWRIGHT_HEADED") != "1"
+            browser = p.chromium.launch(headless=headless)
+            context = _create_context(browser)
+            page = context.new_page()
+
+            # 尝试用已保存的 session 直接访问
+            if SESSION_FILE.exists():
+                logger.info("[social_media] 尝试复用已保存的 session")
+                if _try_session(page):
+                    logger.info("[social_media] 认证 ... 成功（复用 session）")
+                    try:
+                        init_validation_report("social_media")
+                    except OSError as e:
+                        logger.warning(f"[social_media] init_validation_report 写入失败（登录已成功）：{e}")
+                    return True
+                logger.info("[social_media] session 已过期，重新登录")
+
             _login(page, username, password)
+            _save_session(context)
 
             logger.info("[social_media] 认证 ... 成功")
             try:
@@ -159,11 +181,22 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     browser = None
     with sync_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=os.environ.get("PLAYWRIGHT_HEADED") != "1")
-            page = browser.new_page()
+            headless = os.environ.get("PLAYWRIGHT_HEADED") != "1"
+            browser = p.chromium.launch(headless=headless)
+            context = _create_context(browser)
+            page = context.new_page()
 
-            # Step 1: 登录
-            _login(page, username, password)
+            # Step 1: 尝试复用 session 或重新登录
+            session_ok = False
+            if SESSION_FILE.exists():
+                logger.info("[social_media] 尝试复用已保存的 session")
+                session_ok = _try_session(page)
+                if not session_ok:
+                    logger.info("[social_media] session 已过期，重新登录")
+
+            if not session_ok:
+                _login(page, username, password)
+                _save_session(context)
 
             # Step 2: 检测验证码（登录后）
             _check_captcha(page)
@@ -244,6 +277,54 @@ def extract_fields(sample: list[dict]) -> list[dict]:
         })
 
     return fields
+
+
+# ---------------------------------------------------------------------------
+# Session 持久化
+# ---------------------------------------------------------------------------
+
+def _create_context(browser):
+    """创建浏览器上下文，如果有已保存的 session 则加载。"""
+    if SESSION_FILE.exists():
+        try:
+            return browser.new_context(storage_state=str(SESSION_FILE))
+        except Exception as e:
+            logger.warning(f"[social_media] 加载 session 失败，使用空白上下文：{e}")
+    return browser.new_context()
+
+
+def _save_session(context) -> None:
+    """保存浏览器上下文的 cookie 和 localStorage 到本地文件。"""
+    try:
+        SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        context.storage_state(path=str(SESSION_FILE))
+        logger.info(f"[social_media] session 已保存到 {SESSION_FILE}")
+    except Exception as e:
+        logger.warning(f"[social_media] session 保存失败：{e}")
+
+
+def _try_session(page) -> bool:
+    """尝试用已保存的 session 直接访问 Business Suite，判断是否仍有效。
+
+    Returns:
+        True — session 有效，已在 Business Suite 主页面。
+        False — session 过期或无效。
+    """
+    try:
+        page.goto(POSTS_URL, timeout=PAGE_WAIT_TIMEOUT_MS, wait_until="domcontentloaded")
+        # 等待一下看最终 URL
+        time.sleep(5)
+        current_url = page.url.lower()
+        if "login" in current_url or "checkpoint" in current_url:
+            return False
+        # 确认在 Business Suite 页面
+        if "business.facebook.com" in current_url:
+            logger.info("[social_media] session 有效，已进入 Business Suite")
+            return True
+        return False
+    except Exception as e:
+        logger.warning(f"[social_media] session 验证失败：{e}")
+        return False
 
 
 # ---------------------------------------------------------------------------

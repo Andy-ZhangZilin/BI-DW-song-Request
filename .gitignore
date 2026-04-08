@@ -25,3 +25,4 @@ env/
 .DS_Store
 
 # 报告目录（运行时生成）
+.sessions/
