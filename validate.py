@@ -37,7 +37,8 @@ SOURCES: Dict[str, str] = {
     "awin":         "sources.awin",
     "cartsee":      "sources.cartsee",
     "partnerboost": "sources.partnerboost",
-    "social_media": "sources.social_media",
+    "social_media":    "sources.social_media",
+    "youtube_studio":  "sources.youtube_studio",
 }
 
 

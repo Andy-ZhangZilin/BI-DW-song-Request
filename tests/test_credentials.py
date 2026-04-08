@@ -19,6 +19,10 @@ ALL_VALID_ENV = {
     "CARTSEE_PASSWORD": "cartsee_pass",
     "PARTNERBOOST_USERNAME": "pb@example.com",
     "PARTNERBOOST_PASSWORD": "pb_pass",
+    "FACEBOOK_USERNAME": "fb@example.com",
+    "FACEBOOK_PASSWORD": "fb_pass",
+    "YOUTUBE_STUDIO_EMAIL": "yt_studio@example.com",
+    "YOUTUBE_STUDIO_PASSWORD": "yt_studio_pass",
 }
 
 
