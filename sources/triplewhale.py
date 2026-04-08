@@ -59,11 +59,17 @@ _TABLE_REQUIRED_FILTERS: dict[str, str] = {
     "creatives_table": "asset_type IN ('image','video','copy')",
 }
 
-# 聚合查询（MIN/COUNT）会在服务端触发内存超限的表
-# 对这些表改用 ORDER BY LIMIT 1 取最早日期，COUNT 跳过（返回 None）
-_TABLE_SKIP_AGG: set[str] = {
+# MIN 聚合在服务端超时/内存超限的表，改用 ORDER BY date_col ASC LIMIT 1
+_TABLE_SKIP_MIN_AGG: set[str] = {
+    "creatives_table",
+    "product_analytics_tvf",  # MIN 聚合服务端 Timeout error（HTTP 400）
+}
+
+# COUNT 查询服务端持续返回 500（非内存问题，该表不支持 COUNT 操作），直接标 N/A
+_TABLE_NO_COUNT: set[str] = {
     "creatives_table",
 }
+
 
 # 各表日期列名（基于表结构规范；None 表示该表暂无已知日期列）
 _TABLE_DATE_COLUMNS: dict[str, Optional[str]] = {
@@ -349,8 +355,8 @@ def _fetch_earliest_date(table_name: str, api_key: str) -> Optional[str]:
         return None
 
     where = _required_where(table_name)
-    # 聚合查询内存超限的表改用 ORDER BY LIMIT 1 取最早日期
-    if table_name in _TABLE_SKIP_AGG:
+    # MIN 聚合超时/内存超限的表改用 ORDER BY LIMIT 1 取最早日期
+    if table_name in _TABLE_SKIP_MIN_AGG:
         query = (
             f"SELECT {date_col} as earliest FROM {table_name}"
             f"{where} ORDER BY {date_col} ASC LIMIT 1"
@@ -381,8 +387,9 @@ def _fetch_row_count(table_name: str, api_key: str) -> Optional[int]:
     Returns:
         总行数（int），查询失败时返回 None。
     """
-    if table_name in _TABLE_SKIP_AGG:
-        return _fetch_row_count_chunked(table_name, api_key)
+    if table_name in _TABLE_NO_COUNT:
+        logger.warning(f"[triplewhale] {table_name} COUNT 不可用（服务端持续 500），行数标记为 N/A")
+        return None
 
     query = f"SELECT COUNT(*) as total FROM {table_name}{_required_where(table_name)}"
     try:
