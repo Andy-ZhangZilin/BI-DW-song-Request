@@ -65,10 +65,8 @@ _TABLE_SKIP_MIN_AGG: set[str] = {
     "product_analytics_tvf",  # MIN 聚合服务端 Timeout error（HTTP 400）
 }
 
-# COUNT 查询服务端持续返回 500（非内存问题，该表不支持 COUNT 操作），直接标 N/A
-_TABLE_NO_COUNT: set[str] = {
-    "creatives_table",
-}
+# COUNT 不可用的表（保留用于未来扩展；当前所有表均走分段路径或普通 COUNT）
+_TABLE_NO_COUNT: set[str] = set()
 
 
 # 各表日期列名（基于表结构规范；None 表示该表暂无已知日期列）
@@ -388,8 +386,11 @@ def _fetch_row_count(table_name: str, api_key: str) -> Optional[int]:
         总行数（int），查询失败时返回 None。
     """
     if table_name in _TABLE_NO_COUNT:
-        logger.warning(f"[triplewhale] {table_name} COUNT 不可用（服务端持续 500），行数标记为 N/A")
+        logger.warning(f"[triplewhale] {table_name} COUNT 不可用，行数标记为 N/A")
         return None
+
+    if table_name in _TABLE_SKIP_MIN_AGG:
+        return _fetch_row_count_chunked(table_name, api_key)
 
     query = f"SELECT COUNT(*) as total FROM {table_name}{_required_where(table_name)}"
     try:
@@ -494,7 +495,8 @@ def _run_sql_query(
     if not resp.ok:
         if resp.status_code >= 500:
             logger.warning(
-                f"[triplewhale] SQL 查询服务端错误（HTTP {resp.status_code}），返回空结果"
+                f"[triplewhale] SQL 查询服务端错误（HTTP {resp.status_code}）"
+                f"，响应：{resp.text[:300]}，返回空结果"
             )
             return []
         raise RuntimeError(
