@@ -262,8 +262,8 @@ def _login(page, username: str, password: str) -> None:
     """在已打开的 page 上完成 Meta Business Suite 两步登录。
 
     步骤 1：打开 Business Suite 登录入口（FB_LOGIN_URL），点击"使用 Facebook 登录"按钮，
-            跳转至 Facebook 账号登录页。
-    步骤 2：在 Facebook 登录页填入账号密码，点击登录，等待跳转回 Business Suite。
+            此操作会弹出一个新的 Facebook 登录弹窗（popup）。
+    步骤 2：在弹窗中填入账号密码，点击登录，弹窗关闭后原页面自动跳转回 Business Suite。
 
     Args:
         page: Playwright Page 对象（已创建，未导航）。
@@ -277,22 +277,25 @@ def _login(page, username: str, password: str) -> None:
     # 步骤 1：打开 Business Suite 登录入口
     page.goto(FB_LOGIN_URL, timeout=PAGE_WAIT_TIMEOUT_MS)
 
-    # 点击"使用 Facebook 登录"按钮（备选多种选择器，适应 DOM 差异）
-    try:
-        page.click("text=使用 Facebook 登录", timeout=PAGE_WAIT_TIMEOUT_MS)
-    except Exception:
+    # 步骤 2：点击"使用 Facebook 登录"，捕获弹出的登录窗口（popup）
+    with page.expect_popup(timeout=PAGE_WAIT_TIMEOUT_MS) as popup_info:
         try:
-            page.get_by_role("link", name="使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
+            page.click("text=使用 Facebook 登录", timeout=PAGE_WAIT_TIMEOUT_MS)
         except Exception:
-            page.get_by_text("使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
+            try:
+                page.get_by_role("link", name="使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
+            except Exception:
+                page.get_by_text("使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
 
-    # 步骤 2：填入 Facebook 账号密码（标准 Facebook 登录页）
-    page.wait_for_selector("input[name='email']", timeout=PAGE_WAIT_TIMEOUT_MS)
-    page.fill("input[name='email']", username)
-    page.fill("input[name='pass']", password)
-    page.click("button[name='login']")
+    popup = popup_info.value
 
-    # 等待跳转回 Business Suite（成功标志：URL 包含 /latest/）
+    # 步骤 3：在弹窗中填入 Facebook 账号密码
+    popup.wait_for_selector("input[name='email']", timeout=PAGE_WAIT_TIMEOUT_MS)
+    popup.fill("input[name='email']", username)
+    popup.fill("input[name='pass']", password)
+    popup.click("button[name='login']")
+
+    # 步骤 4：等待原页面跳转回 Business Suite（弹窗登录成功后自动跳转）
     page.wait_for_url("**/latest/**", timeout=PAGE_WAIT_TIMEOUT_MS)
 
     # 验证确实离开了登录页（凭证错误/2FA 重定向时 URL 可能误匹配）
