@@ -323,7 +323,8 @@ def _fetch_table(table_name: str, api_key: str) -> list[dict]:
         # 5xx 服务端错误（如该表权限未开通）→ 警告并返回空列表，不中断整体验证
         if resp.status_code >= 500:
             logger.warning(
-                f"[triplewhale] {table_name} 服务端错误（HTTP {resp.status_code}），跳过该表"
+                f"[triplewhale] {table_name} 服务端错误（HTTP {resp.status_code}）"
+                f"，响应：{resp.text[:300]}，跳过该表"
             )
             return []
         raise RuntimeError(
