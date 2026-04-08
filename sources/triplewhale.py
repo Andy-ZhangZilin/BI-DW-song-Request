@@ -58,6 +58,12 @@ _TABLE_REQUIRED_FILTERS: dict[str, str] = {
     "creatives_table": "asset_type = 'video'",
 }
 
+# 聚合查询（MIN/COUNT）会在服务端触发内存超限的表
+# 对这些表改用 ORDER BY LIMIT 1 取最早日期，COUNT 跳过（返回 None）
+_TABLE_SKIP_AGG: set[str] = {
+    "creatives_table",
+}
+
 # 各表日期列名（基于表结构规范；None 表示该表暂无已知日期列）
 _TABLE_DATE_COLUMNS: dict[str, Optional[str]] = {
     "pixel_orders_table":           "created_at",   # 实测字段
@@ -340,7 +346,17 @@ def _fetch_earliest_date(table_name: str, api_key: str) -> Optional[str]:
     date_col = _TABLE_DATE_COLUMNS.get(table_name)
     if not date_col:
         return None
-    query = f"SELECT MIN({date_col}) as earliest FROM {table_name}{_required_where(table_name)}"
+
+    where = _required_where(table_name)
+    # 聚合查询内存超限的表改用 ORDER BY LIMIT 1 取最早日期
+    if table_name in _TABLE_SKIP_AGG:
+        query = (
+            f"SELECT {date_col} as earliest FROM {table_name}"
+            f"{where} ORDER BY {date_col} ASC LIMIT 1"
+        )
+    else:
+        query = f"SELECT MIN({date_col}) as earliest FROM {table_name}{where}"
+
     try:
         rows = _run_sql_query(query, api_key)
         if rows and rows[0].get("earliest") is not None:
@@ -361,6 +377,11 @@ def _fetch_row_count(table_name: str, api_key: str) -> Optional[int]:
     Returns:
         总行数（int），查询失败时返回 None。
     """
+    # 聚合查询内存超限的表直接跳过 COUNT，返回 None（未知）
+    if table_name in _TABLE_SKIP_AGG:
+        logger.warning(f"[triplewhale] {table_name} COUNT 跳过（表级聚合内存超限）")
+        return None
+
     query = f"SELECT COUNT(*) as total FROM {table_name}{_required_where(table_name)}"
     try:
         rows = _run_sql_query(query, api_key)
