@@ -167,7 +167,30 @@ def main() -> None:
             "例：--source tiktok --table return_refund"
         ),
     )
+    parser.add_argument(
+        "--save-session",
+        type=str,
+        metavar="SOURCE",
+        help=(
+            "打开浏览器让用户手动登录，保存 session 供后续自动使用。"
+            "目前仅支持 social_media。"
+            "例：python validate.py --save-session social_media"
+        ),
+    )
     args = parser.parse_args()
+
+    # --- 手动保存 session 模式 ---
+    if args.save_session:
+        source_name = args.save_session
+        if source_name not in SOURCES:
+            logger.error(f"未知数据源：{source_name}，可选值：{', '.join(SOURCES.keys())}")
+            sys.exit(1)
+        module = importlib.import_module(SOURCES[source_name])
+        if not hasattr(module, "save_session"):
+            logger.error(f"数据源 {source_name} 不支持 --save-session")
+            sys.exit(1)
+        success = module.save_session()
+        sys.exit(0 if success else 1)
 
     if not args.source and not args.all:
         parser.print_help()

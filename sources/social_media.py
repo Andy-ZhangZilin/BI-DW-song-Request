@@ -82,6 +82,56 @@ CAPTCHA_KEYWORDS = [
 # 公开接口
 # ---------------------------------------------------------------------------
 
+def save_session() -> bool:
+    """打开可视化浏览器，让用户手动登录 Facebook Business Suite，完成后保存 session。
+
+    用法：python -m sources.social_media
+    或：  python validate.py --save-session social_media
+
+    流程：
+        1. 打开 Chromium 浏览器（非 headless），导航到 Business Suite 登录页
+        2. 用户手动完成登录（包括验证码、人机验证等）
+        3. 检测到用户已进入 Business Suite 后自动保存 cookie
+        4. 后续运行 validate.py 时自动复用保存的 session
+
+    Returns:
+        True — session 保存成功
+        False — 超时或出错
+    """
+    logger.info("[social_media] 启动手动登录模式，请在浏览器中完成登录...")
+
+    browser = None
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch(headless=False)
+            context = browser.new_context()
+            page = context.new_page()
+
+            page.goto(FB_LOGIN_URL, timeout=PAGE_WAIT_TIMEOUT_MS, wait_until="domcontentloaded")
+            logger.info("[social_media] 浏览器已打开，请手动登录 Facebook Business Suite")
+            logger.info("[social_media] 登录成功后将自动保存 session（最多等待 5 分钟）")
+
+            # 轮询等待用户完成登录（最多 5 分钟）
+            deadline = time.time() + 300
+            while time.time() < deadline:
+                current_url = page.url.lower()
+                if "business.facebook.com" in current_url and "login" not in current_url:
+                    _save_session(context)
+                    logger.info("[social_media] session 保存成功！后续运行将自动复用登录态")
+                    return True
+                time.sleep(2)
+
+            logger.error("[social_media] 等待超过 5 分钟，session 保存失败")
+            return False
+
+        except Exception as e:
+            logger.error(f"[social_media] 手动登录模式出错：{e}")
+            return False
+        finally:
+            if browser is not None:
+                browser.close()
+
+
 def authenticate() -> bool:
     """通过账号密码完成 Meta Business Suite 登录。
 
@@ -559,3 +609,12 @@ def _infer_type(value) -> str:
         except ValueError:
             pass
     return "string"
+
+
+# ---------------------------------------------------------------------------
+# 直接运行入口：python -m sources.social_media
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    save_session()
