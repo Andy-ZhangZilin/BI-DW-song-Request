@@ -112,3 +112,9 @@
 - 空样本仅 warning 不抛异常 [sources/social_media.py `fetch_sample()`] — 与 awin.py 相同
 - `authenticate()` 和 `fetch_sample()` 各自独立登录，无会话复用 [sources/social_media.py] — 与 awin.py/cartsee.py 设计一致
 - ARIA 分支按位置映射字段，列序错误时静默产生错误数据 [sources/social_media.py `_extract_post_rows()`] — 动态 SPA 页面结构未知，fallback 设计限制
+
+## Deferred from: code review of 4-6-youtube-studio-爬虫数据源接入 (2026-04-08)
+
+- Fixture 有 2 条记录但运行时 `_extract_analytics_metrics` 固定返回 1 条，nullable 相关测试覆盖的场景在生产中不会出现 [tests/test_youtube_studio.py] — 测试设计优化，不影响功能正确性
+- `test_credentials.py::test_all_13_keys_present_in_result` 方法名中的 "13" 已过时（现为 16 个键）[tests/test_credentials.py] — 预存问题，方法体使用动态 `_REQUIRED_KEYS` 所以断言正确
+- `_login()` post-login URL 检查仅覆盖 `accounts.google.com` 和 `signin`，不覆盖 Google 其他中间域名 [sources/youtube_studio.py:307] — 需整体 Google 登录流优化，与 social_media.py 同模式

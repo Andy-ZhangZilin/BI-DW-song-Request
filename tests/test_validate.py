@@ -43,7 +43,7 @@ def _make_mock_source(
 
 
 def _make_all_mock_sources(override: dict | None = None) -> dict:
-    """创建全部 8 个 source 的 mock 注册表，可通过 override 替换特定 source。"""
+    """创建全部 9 个 source 的 mock 注册表，可通过 override 替换特定 source。"""
     sources = {
         "triplewhale": _make_mock_source(),
         "tiktok": _make_mock_source(),
@@ -53,6 +53,7 @@ def _make_all_mock_sources(override: dict | None = None) -> dict:
         "cartsee": _make_mock_source(),
         "partnerboost": _make_mock_source(),
         "social_media": _make_mock_source(),
+        "youtube_studio": _make_mock_source(),
     }
     if override:
         sources.update(override)
@@ -86,7 +87,7 @@ class TestHelpOutput:
         # 重建 parser 验证参数存在（直接检查 SOURCES 注册表和行为）
         assert "triplewhale" in validate.SOURCES
         assert "social_media" in validate.SOURCES
-        assert len(validate.SOURCES) == 8
+        assert len(validate.SOURCES) == 9
 
 
 # ---------------------------------------------------------------------------

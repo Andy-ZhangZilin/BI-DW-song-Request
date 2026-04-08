@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-08  # Story 4.5 done（code review patches applied）
+last_updated: 2026-04-08  # Story 4.6 done（code review patches applied）
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -73,6 +73,7 @@ development_status:
   4-3-partnerboost-爬虫数据源接入: done
   4-4-社媒后台-stub-模块: done
   4-5-facebook-business-suite-爬虫数据源接入: done
+  4-6-youtube-studio-爬虫数据源接入: done
   epic-4-retrospective: optional
 
   # Epic 5: 统一 CLI 验证入口与完整流水线
