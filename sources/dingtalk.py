@@ -1,9 +1,17 @@
-"""钉钉多维表数据源：authenticate / fetch_sample / extract_fields
+"""钉钉多维表格（Notable Bitable）数据源：authenticate / fetch_sample / extract_fields
 
 公开接口（与其他 source 模块对齐）：
     authenticate() -> bool
     fetch_sample(table_name=None) -> list[dict]
     extract_fields(sample) -> list[dict]
+
+凭证要求（.env）：
+    DINGTALK_APP_KEY          企业内部应用 AppKey
+    DINGTALK_APP_SECRET       企业内部应用 AppSecret
+    DINGTALK_WORKBOOK_ID      多维表格 BaseId（文档唯一标识）
+    DINGTALK_OPERATOR_ID      操作者 unionId（必填，用于 notable API 鉴权）
+    DINGTALK_SHEET_ID         （可选）指定 Sheet ID；未配置时按名称或取第一个
+    DINGTALK_SHEET_NAME       （可选）指定 Sheet 名称，如"红人信息汇总"
 """
 import logging
 import time
@@ -21,8 +29,7 @@ _cached_token: str | None = None
 _token_expiry: float = 0.0
 
 _TOKEN_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
-_SHEETS_URL = "https://api.dingtalk.com/v1.0/doc/workbooks/{workbook_id}/sheets"
-_RANGE_URL = "https://api.dingtalk.com/v1.0/doc/workbooks/{workbook_id}/sheets/{sheet_id}/range"
+_NOTABLE_BASE = "https://api.dingtalk.com/v1.0/notable/bases"
 
 
 def _load_token() -> str:
@@ -43,6 +50,32 @@ def _load_token() -> str:
     return _cached_token
 
 
+def _flatten_value(value: object) -> object:
+    """将 bitable 字段值归一化为简单标量类型。
+
+    bitable 返回的复合值类型：
+    - URL:    {"link": "...", "text": "..."}  → 取 link
+    - 单选:   {"name": "...", "id": "..."}   → 取 name
+    - 人员:   {"unionId": "...", "name": "..."} → 取 name
+    - 多选/多人员: [{"name":...}, ...]         → 逗号拼接 name
+    """
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        if "link" in value:
+            return value["link"]
+        if "name" in value:
+            return value["name"]
+    if isinstance(value, list):
+        if not value:
+            return None
+        first = value[0]
+        if isinstance(first, dict) and "name" in first:
+            return ", ".join(item.get("name", "") for item in value)
+        return str(value)
+    return value
+
+
 def authenticate() -> bool:
     """验证钉钉凭证有效性（获取 access token）。
 
@@ -59,52 +92,71 @@ def authenticate() -> bool:
 
 
 def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
-    """从钉钉多维表拉取样本数据（默认取第一个 Sheet 的 A1:Z100 区域）。
+    """从钉钉多维表格拉取全量记录并归一化为扁平字典列表。
+
+    使用 notable API（/v1.0/notable/bases/...）分页拉取，
+    自动解析复合字段值（URL / 单选 / 多选 / 人员等）。
 
     Args:
         table_name: 未使用，保留以对齐公共接口签名。
 
     Returns:
-        记录列表，每条记录为 {列名: 值} 的字典。空表返回 []。
+        记录列表，每条记录为 {列名: 标量值} 的字典。空表返回 []。
     """
     token = _load_token()
     creds = _creds_module.get_credentials()
-    workbook_id = creds["DINGTALK_WORKBOOK_ID"]
-    headers = {"x-acs-dingtalk-access-token": token}
+    base_id = creds["DINGTALK_WORKBOOK_ID"]
+    operator_id = _creds_module.get_optional_config("DINGTALK_OPERATOR_ID")
+    if not operator_id:
+        raise RuntimeError(
+            f"[{SOURCE_NAME}] 未配置 DINGTALK_OPERATOR_ID，请在 .env 中填入操作者 unionId"
+        )
 
-    # 优先使用显式指定的 sheet_id，否则自动获取第一个 Sheet
-    sheet_id = creds.get("DINGTALK_SHEET_ID", "")
+    headers = {"x-acs-dingtalk-access-token": token}
+    params_base = {"operatorId": operator_id}
+
+    # 确定 sheet_id：优先显式配置，次之按名称查找，最后取第一个
+    sheet_id = _creds_module.get_optional_config("DINGTALK_SHEET_ID", "")
     if not sheet_id:
-        sheets_url = _SHEETS_URL.format(workbook_id=workbook_id)
-        resp = requests.get(sheets_url, headers=headers, timeout=30)
+        sheet_name = _creds_module.get_optional_config("DINGTALK_SHEET_NAME", "")
+        resp = requests.get(
+            f"{_NOTABLE_BASE}/{base_id}/sheets",
+            headers=headers, params=params_base, timeout=30,
+        )
         resp.raise_for_status()
         sheets = resp.json().get("value", [])
         if not sheets:
-            raise RuntimeError(f"[{SOURCE_NAME}] workbook {workbook_id} 中未找到任何 Sheet")
-        sheet_id = sheets[0].get("id") or sheets[0].get("sheetId", "")
+            raise RuntimeError(f"[{SOURCE_NAME}] base {base_id} 中未找到任何 Sheet")
+        if sheet_name:
+            matched = next((s for s in sheets if s.get("name") == sheet_name), None)
+            if not matched:
+                raise RuntimeError(f"[{SOURCE_NAME}] 未找到名称为 '{sheet_name}' 的 Sheet")
+            sheet_id = matched["id"]
+        else:
+            sheet_id = sheets[0]["id"]
 
-    range_url = _RANGE_URL.format(workbook_id=workbook_id, sheet_id=sheet_id)
-    resp = requests.get(
-        range_url,
-        headers=headers,
-        params={"range": "A1:Z100"},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    values = data.get("value", {}).get("values", [])
-    if not values or len(values) < 2:
-        return []
+    # 分页拉取全量记录
+    all_records: list[dict] = []
+    next_token: str | None = None
+    while True:
+        params = {**params_base, "maxResults": 100}
+        if next_token:
+            params["nextToken"] = next_token
+        resp = requests.get(
+            f"{_NOTABLE_BASE}/{base_id}/sheets/{sheet_id}/records",
+            headers=headers, params=params, timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        records = data.get("records", [])
+        for rec in records:
+            flat = {k: _flatten_value(v) for k, v in rec.get("fields", {}).items()}
+            all_records.append(flat)
+        next_token = data.get("nextToken")
+        if not next_token or not records:
+            break
 
-    headers_row = values[0]
-    records = []
-    for row in values[1:]:
-        record = {
-            str(col_name): (row[i] if i < len(row) else None)
-            for i, col_name in enumerate(headers_row)
-        }
-        records.append(record)
-    return records
+    return all_records
 
 
 def extract_fields(sample: list[dict]) -> list[dict]:
