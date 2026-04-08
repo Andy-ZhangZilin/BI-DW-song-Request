@@ -354,15 +354,13 @@ def _fetch_earliest_date(table_name: str, api_key: str) -> Optional[str]:
         return None
 
     where = _required_where(table_name)
-    # MIN 聚合超时/内存超限的表改用 ORDER BY LIMIT 1 取最早日期
-    if table_name in _TABLE_SKIP_MIN_AGG:
-        query = (
-            f"SELECT {date_col} as earliest FROM {table_name}"
-            f"{where} ORDER BY {date_col} ASC LIMIT 1"
-        )
-    else:
-        query = f"SELECT MIN({date_col}) as earliest FROM {table_name}{where}"
 
+    # MIN 聚合超时/内存超限的表：按年分段，取第一个有数据年份的最早日期
+    # 注意：ORDER BY LIMIT 1 查询 API 不尊重 AS 别名，用原列名 date_col 读取结果
+    if table_name in _TABLE_SKIP_MIN_AGG:
+        return _fetch_earliest_date_chunked(table_name, date_col, where, api_key)
+
+    query = f"SELECT MIN({date_col}) as earliest FROM {table_name}{where}"
     try:
         rows = _run_sql_query(query, api_key)
         if rows and rows[0].get("earliest") is not None:
@@ -371,6 +369,39 @@ def _fetch_earliest_date(table_name: str, api_key: str) -> Optional[str]:
     except Exception as e:
         logger.warning(f"[triplewhale] {table_name} MIN 查询失败：{e}")
         return None
+
+
+def _fetch_earliest_date_chunked(
+    table_name: str, date_col: str, where: str, api_key: str
+) -> Optional[str]:
+    """按年分段查找最早数据日期，适用于全历史 period 下 ORDER BY 会爆内存的大表。
+
+    从 _PROFILE_START_DATE 年份逐年查询，返回第一个有数据年份的最早日期。
+    API 对 ORDER BY LIMIT 1 不尊重 AS 别名，直接用原列名读取结果。
+    """
+    start_year = int(_PROFILE_START_DATE[:4])
+    current_year = datetime.now(timezone.utc).year
+
+    for year in range(start_year, current_year + 1):
+        year_start = f"{year}-01-01"
+        year_end = f"{year}-12-31"
+        query = (
+            f"SELECT {date_col} FROM {table_name}{where} "
+            f"ORDER BY {date_col} ASC LIMIT 1"
+        )
+        try:
+            rows = _run_sql_query(
+                query, api_key,
+                period_start=year_start,
+                period_end=year_end,
+            )
+            if rows and rows[0].get(date_col) is not None:
+                return str(rows[0][date_col])
+        except Exception as e:
+            logger.warning(f"[triplewhale] {table_name} {year} 年 MIN 查询失败，跳过：{e}")
+
+    logger.warning(f"[triplewhale] {table_name} 分段 MIN 全部无数据或失败")
+    return None
 
 
 def _fetch_row_count(table_name: str, api_key: str) -> Optional[int]:
