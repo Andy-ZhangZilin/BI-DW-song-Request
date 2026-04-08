@@ -283,18 +283,17 @@ def _login(page, username: str, password: str) -> None:
     try:
         email_input.wait_for(state="visible", timeout=10_000)
         # 路径 A：页面内直接有输入框，直接填写
-        logger.info("[social_media] 登录路径 A：页面内直接输入")
-        time.sleep(3)
-        page.click("input[name='email']")
-        time.sleep(1)
-        page.type("input[name='email']", username, delay=100)
-        logger.info("[social_media] 邮箱已输入，等待 15 秒后输入密码")
+        logger.info("[social_media] 登录路径 A：等待页面稳定（15 秒）")
         time.sleep(15)
-        page.click("input[name='pass']")
+        page.wait_for_selector("input[name='email']", state="visible", timeout=PAGE_WAIT_TIMEOUT_MS)
+        logger.info("[social_media] 页面已稳定，开始输入凭证")
+        page.click("input[name='email']")
+        page.type("input[name='email']", username, delay=100)
         time.sleep(1)
+        page.click("input[name='pass']")
         page.type("input[name='pass']", password, delay=100)
-        logger.info("[social_media] 密码已输入，等待 5 秒后点击登录")
-        time.sleep(5)
+        time.sleep(1)
+        logger.info("[social_media] 凭证已输入，点击登录")
         page.locator("button", has_text="登录").first.click(no_wait_after=True)
     except Exception:
         # 路径 B：需要点击"使用 Facebook 登录"按钮触发 popup
@@ -304,21 +303,21 @@ def _login(page, username: str, password: str) -> None:
             fb_login_btn.click(no_wait_after=True)
 
         popup = popup_info.value
-        logger.info("[social_media] popup 已捕获，等待登录表单加载")
+        logger.info("[social_media] popup 已捕获，等待页面稳定（15 秒）")
         popup.wait_for_load_state("domcontentloaded", timeout=PAGE_WAIT_TIMEOUT_MS)
         popup.wait_for_selector("input[name='email']", state="visible", timeout=PAGE_WAIT_TIMEOUT_MS)
-        time.sleep(3)
-        logger.info("[social_media] popup 登录表单已加载，开始输入邮箱")
-        popup.click("input[name='email']")
-        time.sleep(1)
-        popup.type("input[name='email']", username, delay=100)
-        logger.info("[social_media] 邮箱已输入，等待 15 秒后输入密码")
+        # 等 15 秒让页面完全稳定（Facebook 会在加载后自动刷新一次）
         time.sleep(15)
-        popup.click("input[name='pass']")
+        # 刷新后重新等待表单出现
+        popup.wait_for_selector("input[name='email']", state="visible", timeout=PAGE_WAIT_TIMEOUT_MS)
+        logger.info("[social_media] 页面已稳定，开始输入凭证")
+        popup.click("input[name='email']")
+        popup.type("input[name='email']", username, delay=100)
         time.sleep(1)
+        popup.click("input[name='pass']")
         popup.type("input[name='pass']", password, delay=100)
-        logger.info("[social_media] 密码已输入，等待 5 秒后点击登录")
-        time.sleep(5)
+        time.sleep(1)
+        logger.info("[social_media] 凭证已输入，点击登录")
         popup.locator("button", has_text="登录").first.click(no_wait_after=True)
 
     # 步骤 3：等待跳转回 Business Suite 主页面
