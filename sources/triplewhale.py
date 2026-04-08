@@ -425,7 +425,11 @@ def _fetch_row_count_chunked(table_name: str, api_key: str) -> Optional[int]:
         )
         query = f"SELECT COUNT(*) as total FROM {table_name}{where_clause}"
         try:
-            rows = _run_sql_query(query, api_key)
+            rows = _run_sql_query(
+                query, api_key,
+                period_start=year_start,
+                period_end=year_end,
+            )
             if rows and rows[0].get("total") is not None:
                 total += int(rows[0]["total"])
                 any_success = True
@@ -440,15 +444,21 @@ def _fetch_row_count_chunked(table_name: str, api_key: str) -> Optional[int]:
     return total
 
 
-def _run_sql_query(query: str, api_key: str, timeout: int = PROFILE_TIMEOUT) -> list[dict]:
+def _run_sql_query(
+    query: str,
+    api_key: str,
+    timeout: int = PROFILE_TIMEOUT,
+    period_start: Optional[str] = None,
+    period_end: Optional[str] = None,
+) -> list[dict]:
     """向 TripleWhale SQL 端点执行任意 SQL 查询，返回结果列表。
 
-    使用全历史时间范围（_PROFILE_START_DATE 至今）以确保聚合查询覆盖所有数据。
-
     Args:
-        query: SQL 查询字符串（如 SELECT MIN(...) / SELECT COUNT(*) 等）。
+        query: SQL 查询字符串。
         api_key: TripleWhale API Key。
         timeout: 请求超时秒数，默认 PROFILE_TIMEOUT（120s）。
+        period_start: payload period startDate，默认 _PROFILE_START_DATE（全历史）。
+        period_end:   payload period endDate，默认今天。
 
     Returns:
         结果记录列表（list[dict]），无结果时返回空列表。
@@ -457,10 +467,11 @@ def _run_sql_query(query: str, api_key: str, timeout: int = PROFILE_TIMEOUT) -> 
         requests.Timeout: 请求超时
         RuntimeError: HTTP 4xx 错误
     """
-    end_date = str(datetime.now(timezone.utc).date())
+    p_start = period_start or _PROFILE_START_DATE
+    p_end = period_end or str(datetime.now(timezone.utc).date())
     headers = {"x-api-key": api_key, "content-type": "application/json"}
     payload = {
-        "period": {"startDate": _PROFILE_START_DATE, "endDate": end_date},
+        "period": {"startDate": p_start, "endDate": p_end},
         "shopId": SHOP_DOMAIN,
         "query": query,
         "currency": "USD",
