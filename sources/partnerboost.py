@@ -127,7 +127,8 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
 
             # ── 导航至报表页 ──────────────────────────────────────────────────
             page.goto(REPORTS_URL, timeout=_PAGE_TIMEOUT, wait_until="domcontentloaded")
-            page.wait_for_selector("table", timeout=_PAGE_TIMEOUT)
+            # 等待 tbody 行出现（SPA 先渲染空 table 壳子，数据行异步加载）
+            page.wait_for_selector("table tbody tr", timeout=_PAGE_TIMEOUT)
 
             # 报表页验证码检测
             _check_captcha(page)
