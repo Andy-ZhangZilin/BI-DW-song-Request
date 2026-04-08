@@ -546,92 +546,49 @@ GET /api/partnerboost/transactions
 
 ---
 
-## 8. Facebook Graph API + TikTok Business API（社媒广告/内容数据）
+## 8. Facebook Business Suite 爬虫 + TikTok Business API（社媒广告/内容数据）
 
-### 8.1 Facebook Graph API
+### 8.1 Facebook Business Suite（Playwright 爬虫）
+
+> **⚠️ 方案变更（2026-04-08）：** 原计划使用 Facebook Graph API，但受制于国内访问限制和 API 申请流程复杂，改为通过 **Playwright 爬虫**抓取 Meta Business Suite 后台数据。
 
 #### 基本信息
-- **官方文档：** https://developers.facebook.com/docs/graph-api/
-- **API 版本：** 当前 v15.0+（定期更新）
-- **中国大陆访问：** ⚠️ 需 VPN（Facebook 在中国受限）
+- **目标后台：** Meta Business Suite（`https://business.facebook.com`）
+- **登录入口：** `https://business.facebook.com/business/loginpage`
+- **登录方式：** 点击"使用 Facebook 登录"按钮 → 输入 Facebook 账号密码
+- **目标页面：** 帖子和 Reels 列表（`/latest/posts/published_posts`）
+- **凭证类型：** Facebook 账号密码（`FACEBOOK_USERNAME` / `FACEBOOK_PASSWORD`）
 
-#### 认证方式
-- **Page Access Token** 认证（而非普通 User Access Token）
-- **认证流程：**
-  1. 通过 OAuth 2.0 获取 User Access Token
-  2. 交换为 Page Access Token（特定于管理的 Page）
-  3. 可选：延长为 Long-Lived Token（有效期 60 天）
-- **所需权限（Scopes）：**
-  - `pages_read_engagement`：读取互动数据
-  - `read_insights`：访问 Insights 端点
-  - `pages_show_list`：列出管理的 Pages
+#### 目标数据页面
 
-#### 可获取的数据指标
+**URL 示例：**
+`https://business.facebook.com/latest/posts/published_posts?business_id={business_id}&asset_id={asset_id}&should_show_nux=false`
 
-##### Page-Level 指标（页面级别）
-| 指标名称 | 字段 | 说明 |
-|---------|------|------|
-| 页面展示次数 | `page_impressions` | 内容展示总次数 |
-| 页面覆盖人数 | `page_impressions_unique` | 唯一用户覆盖数（对应 UI 的 Reach） |
-| 页面互动量 | `page_post_engagements` | 点赞、评论、分享总数 |
-| 互动用户数 | `page_engaged_users` | 参与互动的唯一用户数 |
+**可抓取字段（列表第一条记录）：**
+| 字段名 | 说明 |
+|--------|------|
+| 标题 | 帖子文字内容（截断显示） |
+| 发布日期 | 帖子发布时间（如 4月7日 21:30） |
+| 状态 | 发布状态（已发布/草稿等） |
+| 覆盖人数 | 看到帖子的唯一用户数（Reach） |
+| 获赞数和心情数 | 点赞 + 其他表情反应总数 |
+| 评论数 | 帖子评论数量 |
+| 分享次数 | 帖子被分享次数 |
 
-##### Post-Level 指标（帖子级别）
-| 指标名称 | 字段 | 说明 |
-|---------|------|------|
-| 帖子展示次数 | `post_impressions` | 帖子被展示的总次数 |
-| 帖子覆盖人数 | `post_impressions_unique` | 看到帖子的唯一用户数 |
-| 有机覆盖 | `post_impressions_organic` | 有机（非付费）展示次数 |
-| 互动用户数 | `post_engaged_users` | 与帖子互动的用户数（点赞、评论、分享、点击） |
-| 帖子点击量 | `post_clicks` | 帖子上的所有点击总数 |
-| 反应类型 | `post_reactions_by_type_total` | 按类型分类的反应（Like、Love、Wow、Haha、Sad、Angry） |
-
-⚠️ **分享数限制：** Facebook Graph API 已**移除**直接获取分享数的端点，可通过 `post_reactions_by_type_total` 或 `post_impressions_by_story_type` 间接估算
-
-##### 关键 API 端点
-```http
-# 获取 Page 的所有帖子及 Insights（单次调用）
-GET /{page-id}/posts
-  ?fields=insights.metric(post_impressions_fan,post_engaged_users)
-  &limit=10
-  &access_token={page_access_token}
-
-# 获取特定帖子的 Insights
-POST /{post-id}/insights
-  ?access_token={page_access_token}
-  &metric=post_clicks,post_engaged_users,post_impressions
-  &period=lifetime
-
-# 获取 Page Insights（28 天覆盖）
-GET /{page-id}/insights
-  ?metric=page_impressions_unique
-  &period=days_28
-  &access_token={page_access_token}
-```
-
-##### JavaScript 示例
-```javascript
-const insightsUrl = `https://graph.facebook.com/v15.0/${postId}/insights` +
-  `?access_token=${pageToken}` +
-  `&metric=post_clicks,post_engaged_users,post_impressions,post_reactions_by_type_total` +
-  `&fields=name,values`;
-
-const response = await fetch(insightsUrl);
-const analytics = await response.json();
-
-console.log(analytics.data); // 包含各指标的值
-```
+#### 爬虫实现要点
+- **工具：** `sync_playwright`，headless Chromium
+- **登录流程：**
+  1. 打开 `https://business.facebook.com/business/loginpage`
+  2. 点击"使用 Facebook 登录"按钮（跳转至 Facebook 账号登录页）
+  3. 填入 `FACEBOOK_USERNAME`（邮箱/手机）和 `FACEBOOK_PASSWORD`
+  4. 等待跳转回 Business Suite 首页（成功标志：URL 包含 `business.facebook.com/latest`）
+- **数据抓取：** 导航至帖子和 Reels 页面，抓取列表中第一条记录的所有可见字段
+- **超时设置：** 页面等待 20s，整体执行 90s 内完成
 
 #### 使用限制
-- **Rate Limits：** 每用户每小时约 **200 次调用**
-- **重试策略：** 实现指数退避（Exponential Backoff）+ 响应缓存（1 小时）
-- **数据一致性：** Facebook 可能重新计算历史数据，导致不同时间查询结果略有差异
-- **数据刷新频率：** 近实时（通常 < 1 小时延迟）
-
-#### 最佳实践
-- **安全性：** 切勿在客户端暴露 Access Token，所有请求需通过后端代理
-- **环境变量：** 将密钥存储在 `.env` 文件或环境变量中
-- **错误处理：** 处理常见错误（如"Unsupported get request"、"Permission errors"）
+- **无 Rate Limit：** 爬虫方式无 API 速率限制，但需控制请求频率避免触发反爬
+- **验证码风险：** 若频繁登录可能触发人机验证，遇到时中断并提示手动操作
+- **网络要求：** 需可访问 `facebook.com`（国内需 VPN）
 
 ---
 
@@ -738,7 +695,7 @@ print(report.data)
 | 5 | **CartSee** | ❌ 无公开 API | N/A | 手动导出 / Shopify API 间接 | ✅ 无限制 | 手动 |
 | 6 | **Awin** | ✅ Publisher API | OAuth 2.0 | 交易金额（amount）聚合 | ✅ 无限制 | 近实时 |
 | 7 | **PartnerBoost** | ⚠️ 有限 API | Token（第三方集成） | 收入（revenue）聚合 | ✅ 无限制 | 近实时 |
-| 8 | **Facebook Graph** | ✅ Graph API | Page Access Token | 无 GMV（只有互动/覆盖数据） | ⚠️ 需 VPN | 近实时 |
+| 8 | **Facebook Business Suite** | ❌ 无 API（改用爬虫） | 账号密码登录 | 无 GMV（只有互动/覆盖数据） | ⚠️ 需 VPN | 近实时 |
 | 8 | **TikTok Business** | ✅ Marketing API | OAuth 2.0（需审批） | 无 GMV（只有广告花费/转化） | ⚠️ 需 VPN | 约 11h 延迟 |
 
 ---
@@ -746,10 +703,11 @@ print(report.data)
 ## 10. 关键发现与建议
 
 ### 10.1 API 可用性
-- **6 个数据源有完整公开 API**（TripleWhale、TikTok Shop、钉钉、YouTube、Awin、Facebook）
-- **2 个数据源无公开 API**：
-  - **CartSee：** 需手动导出或通过 Shopify API 间接获取
-  - **PartnerBoost：** 需通过 Strackr / Affluent 等第三方工具访问
+- **5 个数据源有完整公开 API**（TripleWhale、TikTok Shop、钉钉、YouTube、Awin）
+- **3 个数据源无公开 API，改用爬虫：**
+  - **CartSee：** Playwright 爬虫，账号密码登录
+  - **PartnerBoost：** Playwright 爬虫，账号密码登录
+  - **Facebook Business Suite：** Playwright 爬虫，Facebook 账号密码登录（原计划 Graph API，因国内访问限制改为爬虫）
 
 ### 10.2 GMV 数据获取
 - **TripleWhale、TikTok Shop、Awin、PartnerBoost**：可通过订单/交易数据聚合计算 GMV
@@ -758,22 +716,22 @@ print(report.data)
 - **CartSee**：GMV 需从 Shopify 订单数据中提取（归因到 CartSee 的邮件营销渠道）
 
 ### 10.3 认证方式
-- **OAuth 2.0 主流**：TikTok Shop、Awin、Facebook、TikTok Business
+- **OAuth 2.0 主流**：TikTok Shop、Awin、TikTok Business
 - **API Key 简化**：TripleWhale、YouTube（公开数据）、钉钉（Access Token）
 - **混合模式**：YouTube 支持 API Key（公开）+ OAuth（私有）
 
 ### 10.4 中国大陆访问
-- **需 VPN**：TripleWhale（可能）、YouTube、Facebook、TikTok Business（国际版）
+- **需 VPN**：TripleWhale（可能）、YouTube、Facebook Business Suite（爬虫）、TikTok Business（国际版）
 - **无限制**：钉钉、CartSee、Awin、PartnerBoost
 - **替代方案**：TikTok Shop 和 TikTok Business 的中国版（抖店、巨量引擎）有独立 API
 
 ### 10.5 数据刷新频率
-- **实时/近实时（< 1h）**：TripleWhale、TikTok Shop（Webhook）、钉钉、YouTube、Awin、Facebook
+- **实时/近实时（< 1h）**：TripleWhale、TikTok Shop（Webhook）、钉钉、YouTube、Awin、Facebook Business Suite（爬虫）
 - **延迟较大（> 10h）**：TikTok Business API（约 11 小时）
 - **手动更新**：CartSee（依赖导出操作）
 
 ### 10.6 Rate Limits 风险
-- **明确限制**：YouTube（10,000 单位/天）、Facebook（200 次/小时/用户）
+- **明确限制**：YouTube（10,000 单位/天）
 - **未披露限制**：TripleWhale、TikTok Shop、Awin、PartnerBoost（需实现自适应限流）
 - **建议策略**：
   - 实现指数退避（Exponential Backoff）
@@ -790,7 +748,7 @@ print(report.data)
 #### 阶段 2：中优先级（需配置凭证 + 有公开 API）
 4. **TikTok Shop API** — OAuth 流程较复杂，需申请 Scopes
 5. **钉钉 Bitable API** — 需创建企业内部应用获取凭证
-6. **Facebook Graph API** — 需 Page Access Token，权限申请
+6. **Facebook Business Suite** — 改用 Playwright 爬虫，账号密码已具备
 
 #### 阶段 3：低优先级（无 API 或需第三方工具）
 7. **CartSee** — 手动导出或通过 Shopify API 间接获取
@@ -804,7 +762,7 @@ print(report.data)
 ### 11.1 立即行动
 - [x] **TripleWhale：** 确认 Piscifun 的 shopId（联系 TripleWhale 技术支持）
 - [ ] **钉钉 Bitable：** 创建企业内部应用，获取 AppKey / AppSecret / operatorId
-- [ ] **Facebook Graph API：** 联系邻邻完成 Facebook 账号授权
+- [x] **Facebook Business Suite：** 已具备账号密码凭证，改用 Playwright 爬虫实现（Story 4.5）
 
 ### 11.2 技术验证（PoC）
 建议按以下顺序进行技术验证：
@@ -836,7 +794,7 @@ print(report.data)
 3. **钉钉开放平台：** https://open.dingtalk.com/document/
 4. **YouTube Data API v3：** https://developers.google.com/youtube/v3/docs
 5. **Awin Publisher API：** https://help.awin.com/apidocs/introduction-1
-6. **Facebook Graph API：** https://developers.facebook.com/docs/graph-api/
+6. **Facebook Business Suite（爬虫）：** https://business.facebook.com/business/loginpage
 7. **TikTok Business API：** https://business-api.tiktok.com/portal
 
 ### 开发者工具

@@ -24,6 +24,4 @@ env/
 # macOS
 .DS_Store
 
-# 报告目录（运行时生成，不提交 raw 报告）
-# reports/ 目录保留（通过 .gitkeep 追踪），但排除 raw.md 文件
-reports/*-raw.md
+# 报告目录（运行时生成）

@@ -8,14 +8,28 @@
     extract_fields(sample: list[dict]) -> list[dict]
 """
 import logging
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:
-    sync_playwright = None  # type: ignore[assignment]
+from playwright.sync_api import sync_playwright
 from config.credentials import get_credentials, mask_credential
 
 logger = logging.getLogger(__name__)
 SOURCE_NAME = "cartsee"
+
+LOGIN_URL = "https://app.cartsee.com/cartsee-new/login"
+CAMPAIGN_URL = "https://app.cartsee.com/cartsee-new/campaign/list"
+
+
+def _do_login(page, username, password):
+    """执行登录操作，登录失败 raise RuntimeError。"""
+    page.goto(LOGIN_URL, timeout=20000)
+    # 等待邮箱输入框出现即可，不用等 networkidle（SPA 有持续后台请求）
+    page.wait_for_selector("input[placeholder='请输入邮箱']", timeout=20000)
+    page.fill("input[placeholder='请输入邮箱']", username)
+    page.fill("input[type='password']", password)
+    page.click("button:has-text('登录')")
+    try:
+        page.wait_for_url(lambda url: "login" not in url, timeout=20000)
+    except Exception:
+        raise RuntimeError("[cartsee] 登录失败，请检查账号密码")
 
 
 def authenticate() -> bool:
@@ -34,22 +48,9 @@ def authenticate() -> bool:
         browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            page.goto("https://cartsee.io/login", timeout=15000)
-            page.wait_for_load_state("networkidle", timeout=15000)
-
-            # 填写账号密码（选择器基于 CartSee 登录页实际结构）
-            page.fill("input[type='email'], input[name='email'], input[placeholder*='email' i]", username)
-            page.fill("input[type='password'], input[name='password']", password)
-            page.click("button[type='submit'], button:has-text('Login'), button:has-text('Sign in')")
-            page.wait_for_load_state("networkidle", timeout=15000)
-
-            # 判断登录成功：不再停留在登录页
-            if "login" not in page.url.lower() and "signin" not in page.url.lower():
-                logger.info("[cartsee] 认证 ... 成功")
-                return True
-            else:
-                logger.error("[cartsee] 认证 ... 失败：登录后仍在登录页，请检查账号密码")
-                return False
+            _do_login(page, username, password)
+            logger.info("[cartsee] 认证 ... 成功")
+            return True
         except Exception as e:
             logger.error(f"[cartsee] 认证 ... 失败：{e}")
             return False
@@ -73,40 +74,30 @@ def fetch_sample(table_name: str = None) -> list[dict]:
         browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            # 登录
-            page.goto("https://cartsee.io/login", timeout=15000)
-            page.wait_for_load_state("networkidle", timeout=15000)
 
-            page.fill("input[type='email'], input[name='email'], input[placeholder*='email' i]", username)
-            page.fill("input[type='password'], input[name='password']", password)
-            page.click("button[type='submit'], button:has-text('Login'), button:has-text('Sign in')")
-            page.wait_for_load_state("networkidle", timeout=15000)
+            # 登录
+            _do_login(page, username, password)
 
             # 验证码检测
             if "captcha" in page.url.lower() or page.query_selector(".captcha, #captcha, [class*='captcha']"):
                 raise RuntimeError("[cartsee] 遇到验证码，请手动完成验证后重新运行")
-            page_content = page.content()
-            if "captcha" in page_content.lower() or "验证码" in page_content:
-                raise RuntimeError("[cartsee] 遇到验证码，请手动完成验证后重新运行")
 
-            # 检查登录是否成功
-            if "login" in page.url.lower() or "signin" in page.url.lower():
-                raise RuntimeError("[cartsee] 登录失败，请检查账号密码")
+            # 导航至营销活动列表页
+            page.goto(CAMPAIGN_URL, timeout=20000)
 
-            # 导航至 campaigns/EDM 数据页面
-            page.goto("https://cartsee.io/campaigns", timeout=15000)
-            page.wait_for_load_state("networkidle", timeout=15000)
-
-            # 再次验证码检测
+            # 验证码检测
             if "captcha" in page.url.lower() or "captcha" in page.content().lower():
                 raise RuntimeError("[cartsee] 遇到验证码，请手动完成验证后重新运行")
 
-            # 等待数据表格加载
-            page.wait_for_selector("table, [class*='table'], [class*='campaign'], [class*='list']", timeout=15000)
+            # 等待数据行渲染完毕（Arco Design 异步渲染，需等 td 有实际文本）
+            page.wait_for_function(
+                "() => { const trs = document.querySelectorAll('table tbody tr'); "
+                "return trs.length > 0 && trs[0].querySelector('td') && "
+                "trs[0].querySelector('td').innerText.trim().length > 0; }",
+                timeout=20000
+            )
 
-            # 抓取表格数据
             records = _extract_table_records(page)
-
             if not records:
                 raise RuntimeError("[cartsee] 未找到任何 EDM 数据记录")
 
@@ -116,7 +107,7 @@ def fetch_sample(table_name: str = None) -> list[dict]:
         except RuntimeError:
             raise
         except Exception as e:
-            if "captcha" in str(e).lower() or "验证码" in str(e):
+            if "captcha" in str(e).lower():
                 raise RuntimeError("[cartsee] 遇到验证码，请手动完成验证后重新运行")
             raise RuntimeError(f"[cartsee] fetch_sample 异常：{e}")
         finally:
@@ -124,34 +115,43 @@ def fetch_sample(table_name: str = None) -> list[dict]:
 
 
 def _extract_table_records(page) -> list[dict]:
-    """从页面表格中提取数据记录。"""
+    """从页面表格中提取数据记录。
+    CartSee 使用 Arco Design 双 table 结构：
+      table[0] 只有 thead（表头），table[1] 只有 tbody（数据行）。
+    """
     records = []
 
-    # 尝试从标准 HTML table 提取
-    table = page.query_selector("table")
-    if table:
-        headers = []
+    tables = page.query_selector_all("table")
+    if len(tables) >= 2:
+        # 第一个 table 取表头
+        header_cells = tables[0].query_selector_all("thead th, thead td")
+        headers = [cell.inner_text().strip() for cell in header_cells]
+        # 第二个 table 取数据行
+        rows = tables[1].query_selector_all("tbody tr")
+        for row in rows:
+            cells = row.query_selector_all("td")
+            if cells:
+                record = {}
+                for i, cell in enumerate(cells):
+                    key = headers[i] if headers and i < len(headers) else f"col_{i}"
+                    record[key] = cell.inner_text().strip()
+                if record:
+                    records.append(record)
+    elif len(tables) == 1:
+        table = tables[0]
         header_cells = table.query_selector_all("thead th, thead td")
-        if header_cells:
-            headers = [cell.inner_text().strip() for cell in header_cells]
-
+        headers = [cell.inner_text().strip() for cell in header_cells]
         rows = table.query_selector_all("tbody tr")
         for row in rows:
             cells = row.query_selector_all("td")
             if cells:
                 record = {}
                 for i, cell in enumerate(cells):
-                    if headers and i < len(headers):
-                        key = headers[i]
-                    elif headers and i >= len(headers):
-                        key = f"field_{i}"
-                    else:
-                        key = f"col_{i}"
+                    key = headers[i] if headers and i < len(headers) else f"col_{i}"
                     record[key] = cell.inner_text().strip()
                 if record:
                     records.append(record)
 
-    # 若无标准 table，尝试抓取页面 JSON 数据
     if not records:
         records = _try_extract_json_data(page)
 
@@ -161,10 +161,8 @@ def _extract_table_records(page) -> list[dict]:
 def _try_extract_json_data(page) -> list[dict]:
     """尝试从页面脚本/API 响应中提取 JSON 数据。"""
     try:
-        # 尝试通过 JavaScript 获取页面内嵌数据
         data = page.evaluate("""
             () => {
-                // 查找常见的数据存储位置
                 if (window.__NUXT__ && window.__NUXT__.data) return window.__NUXT__.data;
                 if (window.__INITIAL_STATE__) return window.__INITIAL_STATE__;
                 if (window.__APP_STATE__) return window.__APP_STATE__;
@@ -173,7 +171,7 @@ def _try_extract_json_data(page) -> list[dict]:
         """)
         if data and isinstance(data, (list, dict)):
             if isinstance(data, list):
-                return data[:5]  # 最多返回 5 条
+                return data[:5]
             elif isinstance(data, dict):
                 return [data]
     except Exception:
@@ -202,7 +200,6 @@ def extract_fields(sample: list[dict]) -> list[dict]:
     if not sample:
         return []
 
-    # 合并所有记录的键，保留首次出现的顺序
     all_keys: list[str] = []
     seen: set[str] = set()
     for record in sample:
@@ -213,20 +210,18 @@ def extract_fields(sample: list[dict]) -> list[dict]:
 
     fields: list[dict] = []
     for key in all_keys:
-        # 从首条非 None 值推断类型
         non_none_value = next(
             (record[key] for record in sample if key in record and record[key] is not None),
             None,
         )
         data_type = _infer_type(non_none_value)
-
-        # 取第一条含该键的记录的值作为示例
+        # 优先取第一个有意义的值（非空、非零、非"-"），避免草稿活动的全零数据作为示例
         sample_value = next(
-            (record[key] for record in sample if key in record),
-            None,
+            (record[key] for record in sample
+             if key in record and record[key] not in (None, "", "0", "-")),
+            next((record[key] for record in sample if key in record), None),
         )
         nullable = any(record.get(key) is None for record in sample)
-
         fields.append({
             "field_name": key,
             "data_type": data_type,

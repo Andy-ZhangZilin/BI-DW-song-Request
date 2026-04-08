@@ -15,11 +15,17 @@ from sources.triplewhale import (
     authenticate,
     fetch_sample,
     extract_fields,
+    fetch_data_profile,
     _infer_type,
     _fetch_table,
+    _fetch_earliest_date,
+    _fetch_row_count,
+    _run_sql_query,
     TABLES,
     SHOP_DOMAIN,
     DEFAULT_TIMEOUT,
+    RATE_LIMIT_RPM,
+    MAX_ROWS_PER_REQUEST,
 )
 
 
@@ -436,3 +442,186 @@ class TestFetchTable:
             mock_post.side_effect = req_lib.Timeout()
             with pytest.raises(req_lib.Timeout):
                 _fetch_table("pixel_orders_table", "test_tw_key")
+
+
+# ---------------------------------------------------------------------------
+# fetch_data_profile() 测试（Task 5）
+# ---------------------------------------------------------------------------
+
+class TestFetchDataProfile:
+    def test_success_returns_correct_structure(self, mock_credentials):
+        """AC8: 正常路径 → 返回含全部 7 个字段的字典，estimated_pull_minutes 计算正确。"""
+        with (
+            patch("sources.triplewhale._fetch_earliest_date", return_value="2024-01-15") as _,
+            patch("sources.triplewhale._fetch_row_count", return_value=5000) as __,
+        ):
+            result = fetch_data_profile("pixel_orders_table")
+
+        assert result["table_name"] == "pixel_orders_table"
+        assert result["earliest_date"] == "2024-01-15"
+        assert result["total_rows"] == 5000
+        assert result["rate_limit_rpm"] == RATE_LIMIT_RPM
+        assert result["max_rows_per_request"] == MAX_ROWS_PER_REQUEST
+        assert result["date_column"] == "created_at"
+        # estimated_pull_minutes = ceil(5000 / MAX_ROWS_PER_REQUEST) / RATE_LIMIT_RPM
+        from math import ceil
+        expected = ceil(5000 / MAX_ROWS_PER_REQUEST) / RATE_LIMIT_RPM
+        assert result["estimated_pull_minutes"] == expected
+
+    def test_no_data_returns_zero_rows_and_none(self, mock_credentials):
+        """AC9: 无数据（COUNT=0）→ total_rows=0，earliest_date=None，estimated_pull_minutes=None。"""
+        with (
+            patch("sources.triplewhale._fetch_earliest_date", return_value=None),
+            patch("sources.triplewhale._fetch_row_count", return_value=0),
+        ):
+            result = fetch_data_profile("creatives_table")
+
+        assert result["total_rows"] == 0
+        assert result["earliest_date"] is None
+        assert result["estimated_pull_minutes"] is None
+
+    def test_query_failure_returns_zero_rows(self, mock_credentials):
+        """查询失败（_fetch_row_count 返回 None）→ total_rows=0，不传播异常。"""
+        with (
+            patch("sources.triplewhale._fetch_earliest_date", return_value=None),
+            patch("sources.triplewhale._fetch_row_count", return_value=None),
+        ):
+            result = fetch_data_profile("ai_visibility_table")
+
+        assert result["total_rows"] == 0
+        assert result["estimated_pull_minutes"] is None
+
+    def test_invalid_table_raises_value_error(self, mock_credentials):
+        """未知表名 → 抛出 ValueError，不调用 SQL 查询。"""
+        with pytest.raises(ValueError, match="未知表名"):
+            fetch_data_profile("nonexistent_table")
+
+    def test_contains_rate_limit_constants(self, mock_credentials):
+        """返回字典必须包含 rate_limit_rpm 和 max_rows_per_request 常量值。"""
+        with (
+            patch("sources.triplewhale._fetch_earliest_date", return_value=None),
+            patch("sources.triplewhale._fetch_row_count", return_value=0),
+        ):
+            result = fetch_data_profile("sessions_table")
+
+        assert result["rate_limit_rpm"] == RATE_LIMIT_RPM
+        assert result["max_rows_per_request"] == MAX_ROWS_PER_REQUEST
+
+    def test_all_tables_accepted(self, mock_credentials):
+        """TABLES 中所有表名均可接受，不抛出异常。"""
+        for table in TABLES:
+            with (
+                patch("sources.triplewhale._fetch_earliest_date", return_value=None),
+                patch("sources.triplewhale._fetch_row_count", return_value=0),
+            ):
+                result = fetch_data_profile(table)
+            assert result["table_name"] == table
+
+
+# ---------------------------------------------------------------------------
+# _run_sql_query() 测试
+# ---------------------------------------------------------------------------
+
+class TestRunSqlQuery:
+    def test_post_uses_sql_endpoint(self):
+        """_run_sql_query 应向 SQL_URL 发送 POST 请求。"""
+        from sources.triplewhale import SQL_URL
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(ok=True, json=lambda: [{"total": 100}])
+            _run_sql_query("SELECT COUNT(*) as total FROM pixel_orders_table", "test_key")
+        assert mock_post.call_args[0][0] == SQL_URL
+
+    def test_post_includes_query_in_payload(self):
+        """payload 必须包含 query 字段。"""
+        query = "SELECT MIN(created_at) as earliest FROM pixel_orders_table"
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(ok=True, json=lambda: [])
+            _run_sql_query(query, "test_key")
+        call_kwargs = mock_post.call_args[1]
+        assert call_kwargs["json"]["query"] == query
+
+    def test_list_response_returned(self):
+        """响应为列表 → 直接返回。"""
+        expected = [{"earliest": "2024-01-01"}]
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(ok=True, json=lambda: expected)
+            result = _run_sql_query("SELECT MIN(date) as earliest FROM ads_table", "key")
+        assert result == expected
+
+    def test_dict_response_returns_empty(self):
+        """响应为 dict（非列表）→ 返回空列表，不抛出异常。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(ok=True, json=lambda: {"error": "unknown"})
+            result = _run_sql_query("SELECT COUNT(*) as total FROM sessions_table", "key")
+        assert result == []
+
+    def test_5xx_returns_empty_list(self):
+        """HTTP 5xx → 返回空列表，不抛出异常。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(ok=False, status_code=503, text="Service Unavailable")
+            result = _run_sql_query("SELECT COUNT(*) as total FROM ads_table", "key")
+        assert result == []
+
+    def test_4xx_raises_runtime_error(self):
+        """HTTP 4xx → 抛出 RuntimeError。"""
+        with patch("sources.triplewhale.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(ok=False, status_code=403, text="Forbidden")
+            with pytest.raises(RuntimeError, match="SQL 查询失败"):
+                _run_sql_query("SELECT COUNT(*) as total FROM pixel_orders_table", "key")
+
+
+# ---------------------------------------------------------------------------
+# _fetch_earliest_date() / _fetch_row_count() 测试
+# ---------------------------------------------------------------------------
+
+class TestFetchEarliestDate:
+    def test_returns_date_string_on_success(self):
+        """正常返回 → 日期字符串。"""
+        with patch("sources.triplewhale._run_sql_query", return_value=[{"earliest": "2024-03-01"}]):
+            result = _fetch_earliest_date("pixel_orders_table", "test_key")
+        assert result == "2024-03-01"
+
+    def test_returns_none_when_no_data(self):
+        """无数据（earliest=None）→ 返回 None。"""
+        with patch("sources.triplewhale._run_sql_query", return_value=[{"earliest": None}]):
+            result = _fetch_earliest_date("pixel_orders_table", "test_key")
+        assert result is None
+
+    def test_returns_none_on_query_exception(self):
+        """查询抛出异常 → 捕获，返回 None，不传播。"""
+        with patch("sources.triplewhale._run_sql_query", side_effect=RuntimeError("error")):
+            result = _fetch_earliest_date("sessions_table", "test_key")
+        assert result is None
+
+    def test_no_date_column_returns_none(self):
+        """对于无日期列的表 → 直接返回 None（不发 SQL 查询）。"""
+        import sources.triplewhale as tw
+        original = tw._TABLE_DATE_COLUMNS.get("pixel_orders_table")
+        tw._TABLE_DATE_COLUMNS["pixel_orders_table"] = None
+        try:
+            with patch("sources.triplewhale._run_sql_query") as mock_sql:
+                result = _fetch_earliest_date("pixel_orders_table", "test_key")
+            mock_sql.assert_not_called()
+            assert result is None
+        finally:
+            tw._TABLE_DATE_COLUMNS["pixel_orders_table"] = original
+
+
+class TestFetchRowCount:
+    def test_returns_count_on_success(self):
+        """正常返回 → 整数行数。"""
+        with patch("sources.triplewhale._run_sql_query", return_value=[{"total": 12345}]):
+            result = _fetch_row_count("pixel_orders_table", "test_key")
+        assert result == 12345
+
+    def test_returns_zero_on_empty_result(self):
+        """空结果列表 → 返回 0。"""
+        with patch("sources.triplewhale._run_sql_query", return_value=[]):
+            result = _fetch_row_count("ads_table", "test_key")
+        assert result == 0
+
+    def test_returns_none_on_exception(self):
+        """查询抛出异常 → 捕获，返回 None，不传播。"""
+        with patch("sources.triplewhale._run_sql_query", side_effect=RuntimeError("db error")):
+            result = _fetch_row_count("pixel_orders_table", "test_key")
+        assert result is None

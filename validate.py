@@ -9,24 +9,13 @@
 不包含报告渲染逻辑（reporter.py 负责）、凭证加载逻辑（credentials.py 负责）。
 """
 import argparse
+import importlib
 import logging
 import sys
 from typing import Any, Dict, Optional
 
 import reporter
 from config.credentials import get_credentials
-from sources import (
-    awin,
-    cartsee,
-    dingtalk,
-    partnerboost,
-    social_media,
-    tiktok,
-    triplewhale,
-    youtube,
-)
-from sources.tiktok import TABLES as TIKTOK_TABLES
-from sources.triplewhale import TABLES as TRIPLEWHALE_TABLES
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,17 +26,18 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # 数据源注册表（有序，按推荐运行顺序）
+# 值为模块路径字符串，运行时按需 import——避免顶层加载 playwright 等重依赖
 # social_media 是 stub，--all 时也纳入（调度器统一捕获 NotImplementedError）
 # ---------------------------------------------------------------------------
-SOURCES: Dict[str, Any] = {
-    "triplewhale": triplewhale,
-    "tiktok": tiktok,
-    "dingtalk": dingtalk,
-    "youtube": youtube,
-    "awin": awin,
-    "cartsee": cartsee,
-    "partnerboost": partnerboost,
-    "social_media": social_media,
+SOURCES: Dict[str, str] = {
+    "triplewhale":  "sources.triplewhale",
+    "tiktok":       "sources.tiktok",
+    "dingtalk":     "sources.dingtalk",
+    "youtube":      "sources.youtube",
+    "awin":         "sources.awin",
+    "cartsee":      "sources.cartsee",
+    "partnerboost": "sources.partnerboost",
+    "social_media": "sources.social_media",
 }
 
 
@@ -55,7 +45,7 @@ SOURCES: Dict[str, Any] = {
 # 私有辅助函数
 # ---------------------------------------------------------------------------
 
-def _run_source(source_name: str, module: Any, table: Optional[str] = None) -> bool:
+def _run_source(source_name: str, module_path: str, table: Optional[str] = None) -> bool:
     """执行单个数据源的完整验证流程，返回是否成功。
 
     流程：authenticate → fetch_sample → extract_fields → write_raw_report → init_validation_report
@@ -63,12 +53,13 @@ def _run_source(source_name: str, module: Any, table: Optional[str] = None) -> b
 
     Args:
         source_name: 数据源名称，与 SOURCES 注册表 key 一致。
-        module: 对应的 source 模块对象。
+        module_path: 对应 source 模块的 Python 路径（如 "sources.triplewhale"）。
         table: 可选，指定单张表名；为 None 时执行全部表（仅对多表数据源有效）。
 
     Returns:
         True 表示全部步骤成功；False 表示认证失败或捕获到异常。
     """
+    module = importlib.import_module(module_path)
     logger.info(f"[{source_name}] 开始验证 ...")
     try:
         ok = module.authenticate()
@@ -79,7 +70,7 @@ def _run_source(source_name: str, module: Any, table: Optional[str] = None) -> b
 
         if source_name == "triplewhale":
             # triplewhale 多表路由：每张表独立抓样本，后续追加 Section
-            tables = [table] if table else TRIPLEWHALE_TABLES
+            tables = [table] if table else module.TABLES
             for i, table_name in enumerate(tables):
                 logger.info(f"[{source_name}] 获取 {table_name} 样本 ...")
                 sample = module.fetch_sample(table_name)
@@ -88,11 +79,23 @@ def _run_source(source_name: str, module: Any, table: Optional[str] = None) -> b
                     source_name, fields, table_name, len(sample), append=(i > 0)
                 )
                 logger.info(f"[{source_name}] {table_name} ... 成功")
+            # 数据概况探测：各表 MIN + COUNT，写入数据概况区块（AC10）
+            logger.info(f"[{source_name}] 探测各表数据概况 ...")
+            profiles = []
+            for table_name in tables:
+                try:
+                    profile = module.fetch_data_profile(table_name)
+                    profiles.append(profile)
+                except Exception as profile_err:
+                    logger.warning(
+                        f"[{source_name}] {table_name} 数据概况探测失败，跳过：{profile_err}"
+                    )
+            reporter.write_triplewhale_data_profile(profiles)
             reporter.init_validation_report(source_name)
         elif source_name == "tiktok":
             # tiktok 多接口路由：每个接口独立抓样本，后续追加 Section
             # 单表异常不中断整体，记录错误后继续下一张表
-            tables = [table] if table else TIKTOK_TABLES
+            tables = [table] if table else module.TABLES
             written = 0
             for table_name in tables:
                 logger.info(f"[{source_name}] 获取 {table_name} 样本 ...")

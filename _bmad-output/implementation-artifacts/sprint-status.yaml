@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-07  # updated by correct-course: story 2-1 回退为 ready-for-dev（新增 fetch_data_profile 功能）
+last_updated: 2026-04-08  # Sprint Change: 新增 Story 4.5 Facebook Business Suite 爬虫（epics.md 更新）
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -55,7 +55,7 @@ development_status:
   # Correct Course 2026-04-04: 2-1 补全 TripleWhale 10 张表，2-2 扩展 TikTok 6 接口路由
   # Correct Course 2026-04-07: 2-1 新增 fetch_data_profile()（最早数据/rate limit/全量预估）
   epic-2: in-progress
-  2-1-triplewhale-数据源接入: ready-for-dev
+  2-1-triplewhale-数据源接入: done
   2-2-tiktok-shop-数据源接入: done
   epic-2-retrospective: optional
 
@@ -66,11 +66,13 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: 爬虫数据源接入
+  # Sprint Change 2026-04-08: 新增 Story 4.5 Facebook Business Suite 爬虫（原 Graph API 方案改为 Playwright 爬虫）
   epic-4: in-progress
   4-1-awin-爬虫数据源接入: done
   4-2-cartsee-爬虫数据源接入: done
   4-3-partnerboost-爬虫数据源接入: done
   4-4-社媒后台-stub-模块: done
+  4-5-facebook-business-suite-爬虫数据源接入: backlog
   epic-4-retrospective: optional
 
   # Epic 5: 统一 CLI 验证入口与完整流水线
