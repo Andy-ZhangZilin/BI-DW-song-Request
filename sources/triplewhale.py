@@ -68,7 +68,7 @@ _TABLE_DATE_COLUMNS: dict[str, Optional[str]] = {
     "ads_table":                    "event_date",   # 修正：实测字段（原错误：date）
     "social_media_comments_table":  "created_at",   # 实测字段
     "social_media_pages_table":     "event_date",   # 修正：实测字段（原错误：created_at）
-    "creatives_table":              "created_at",   # 暂无样本数据，HTTP 500 为服务端问题
+    "creatives_table":              "event_date",   # 修正：实测字段（原错误：created_at）
     "ai_visibility_table":          "event_date",   # 修正：原 created_at 报 Unknown identifier
 }
 
@@ -218,9 +218,19 @@ def fetch_data_profile(table_name: str) -> dict:
 
     earliest_date = _fetch_earliest_date(table_name, api_key) if date_col else None
     total_rows_raw = _fetch_row_count(table_name, api_key)
-    total_rows = total_rows_raw if total_rows_raw is not None else 0
 
-    if total_rows > 0:
+    # total_rows_raw 语义：
+    #   int  → 查询成功（0 表示真无数据，>0 表示有数据）
+    #   None → 查询失败（超时 / 内存超限 / 服务端错误等）
+    count_failed = total_rows_raw is None
+    total_rows = total_rows_raw if not count_failed else 0
+
+    if count_failed:
+        estimated_pull_minutes = None
+        logger.warning(
+            f"[triplewhale] 探测 {table_name} 数据概况 ... COUNT 查询失败，行数未知"
+        )
+    elif total_rows > 0:
         estimated_pull_minutes: Optional[float] = (
             ceil(total_rows / MAX_ROWS_PER_REQUEST) / RATE_LIMIT_RPM
         )
@@ -233,7 +243,7 @@ def fetch_data_profile(table_name: str) -> dict:
         "table_name": table_name,
         "date_column": date_col,
         "earliest_date": earliest_date,
-        "total_rows": total_rows,
+        "total_rows": total_rows if not count_failed else None,  # None 表示未知
         "rate_limit_rpm": RATE_LIMIT_RPM,
         "max_rows_per_request": MAX_ROWS_PER_REQUEST,
         "estimated_pull_minutes": estimated_pull_minutes,
