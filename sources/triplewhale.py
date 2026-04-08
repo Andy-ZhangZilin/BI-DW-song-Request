@@ -370,6 +370,9 @@ def _fetch_earliest_date(table_name: str, api_key: str) -> Optional[str]:
 def _fetch_row_count(table_name: str, api_key: str) -> Optional[int]:
     """执行 COUNT(*) 查询获取表的总行数。
 
+    对 _TABLE_SKIP_AGG 中的表，改用按年分段 COUNT 再求和，
+    避免全表聚合触发 ArrayJoinTransform 内存超限。
+
     Args:
         table_name: 表名（TABLES 中的一个）。
         api_key: TripleWhale API Key。
@@ -377,10 +380,8 @@ def _fetch_row_count(table_name: str, api_key: str) -> Optional[int]:
     Returns:
         总行数（int），查询失败时返回 None。
     """
-    # 聚合查询内存超限的表直接跳过 COUNT，返回 None（未知）
     if table_name in _TABLE_SKIP_AGG:
-        logger.warning(f"[triplewhale] {table_name} COUNT 跳过（表级聚合内存超限）")
-        return None
+        return _fetch_row_count_chunked(table_name, api_key)
 
     query = f"SELECT COUNT(*) as total FROM {table_name}{_required_where(table_name)}"
     try:
@@ -391,6 +392,51 @@ def _fetch_row_count(table_name: str, api_key: str) -> Optional[int]:
     except Exception as e:
         logger.warning(f"[triplewhale] {table_name} COUNT 查询失败：{e}")
         return None
+
+
+def _fetch_row_count_chunked(table_name: str, api_key: str) -> Optional[int]:
+    """按年分段 COUNT，适用于全表聚合内存超限的大表。
+
+    从 _PROFILE_START_DATE 年份逐年查询 COUNT，累加得到总行数。
+    单年若仍超限则跳过该年（计入警告），不影响其他年份统计。
+
+    Returns:
+        累计总行数（int），全部年份均失败时返回 None。
+    """
+    date_col = _TABLE_DATE_COLUMNS.get(table_name)
+    if not date_col:
+        logger.warning(f"[triplewhale] {table_name} 无日期列，无法分段 COUNT")
+        return None
+
+    start_year = int(_PROFILE_START_DATE[:4])
+    current_year = datetime.now(timezone.utc).year
+    base_filter = _TABLE_REQUIRED_FILTERS.get(table_name, "")
+
+    total = 0
+    any_success = False
+    for year in range(start_year, current_year + 1):
+        year_start = f"{year}-01-01"
+        year_end = f"{year}-12-31"
+        date_filter = f"{date_col} >= '{year_start}' AND {date_col} <= '{year_end}'"
+        where_clause = (
+            f" WHERE {base_filter} AND {date_filter}" if base_filter
+            else f" WHERE {date_filter}"
+        )
+        query = f"SELECT COUNT(*) as total FROM {table_name}{where_clause}"
+        try:
+            rows = _run_sql_query(query, api_key)
+            if rows and rows[0].get("total") is not None:
+                total += int(rows[0]["total"])
+                any_success = True
+        except Exception as e:
+            logger.warning(f"[triplewhale] {table_name} {year} 年 COUNT 失败，跳过：{e}")
+
+    if not any_success:
+        logger.warning(f"[triplewhale] {table_name} 分段 COUNT 全部失败")
+        return None
+
+    logger.info(f"[triplewhale] {table_name} 分段 COUNT 完成，总行数：{total}")
+    return total
 
 
 def _run_sql_query(query: str, api_key: str) -> list[dict]:
