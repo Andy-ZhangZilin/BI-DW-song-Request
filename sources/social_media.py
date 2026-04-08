@@ -284,9 +284,13 @@ def _login(page, username: str, password: str) -> None:
         email_input.wait_for(state="visible", timeout=10_000)
         # 路径 A：页面内直接有输入框，直接填写
         logger.info("[social_media] 登录路径 A：页面内直接输入")
-        page.fill("input[name='email']", username)
-        page.fill("input[name='pass']", password)
-        page.click("button[name='login'], button[type='submit']")
+        page.click("input[name='email']")
+        page.type("input[name='email']", username, delay=50)
+        time.sleep(0.5)
+        page.click("input[name='pass']")
+        page.type("input[name='pass']", password, delay=50)
+        time.sleep(0.5)
+        page.locator("button", has_text="登录").first.click(no_wait_after=True)
     except Exception:
         # 路径 B：需要点击"使用 Facebook 登录"按钮触发 popup
         logger.info("[social_media] 登录路径 B：popup 弹窗登录")
@@ -299,9 +303,15 @@ def _login(page, username: str, password: str) -> None:
         popup.wait_for_load_state("domcontentloaded", timeout=PAGE_WAIT_TIMEOUT_MS)
         popup.wait_for_selector("input[name='email']", state="visible", timeout=PAGE_WAIT_TIMEOUT_MS)
         logger.info("[social_media] popup 登录表单已加载，填写凭证")
-        popup.fill("input[name='email']", username)
-        popup.fill("input[name='pass']", password)
-        popup.click("button[name='login']", no_wait_after=True)
+        # 用 type 模拟键盘逐字输入（fill 直接设值会被 Facebook 反自动化检测清空）
+        popup.click("input[name='email']")
+        popup.type("input[name='email']", username, delay=50)
+        time.sleep(0.5)
+        popup.click("input[name='pass']")
+        popup.type("input[name='pass']", password, delay=50)
+        time.sleep(0.5)
+        logger.info("[social_media] 凭证已输入，点击登录")
+        popup.locator("button", has_text="登录").first.click(no_wait_after=True)
 
     # 步骤 3：等待跳转回 Business Suite 主页面
     page.wait_for_url("**/latest/**", timeout=PAGE_WAIT_TIMEOUT_MS)
