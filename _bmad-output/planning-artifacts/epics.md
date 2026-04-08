@@ -529,6 +529,38 @@ FR30: Epic 1 — requirements.txt 依赖管理
 **When** 运行 `tests/test_social_media.py`
 **Then** 三个接口均验证 `NotImplementedError` 被正确抛出，测试全部通过
 
+### Story 4.5: Facebook Business Suite 爬虫数据源接入
+
+作为操作者，
+我希望验证器能通过 Playwright 自动登录 Meta Business Suite 并抓取帖子和 Reels 列表数据字段，
+以便我能获得 Facebook 社媒内容数据的实际字段报告。
+
+**Acceptance Criteria:**
+
+**Given** `get_credentials()` 返回有效的 `FACEBOOK_USERNAME` 和 `FACEBOOK_PASSWORD`
+**When** 调用 `social_media.authenticate()`
+**Then** 使用 `sync_playwright` 启动 headless Chromium，打开 `https://business.facebook.com/business/loginpage`，点击"使用 Facebook 登录"按钮，完成账号密码登录，返回 `True`，日志输出 `[social_media] 认证 ... 成功`
+
+**Given** 登录成功后
+**When** 调用 `social_media.fetch_sample()`
+**Then** 导航至帖子和 Reels 页面（`/latest/posts/published_posts`），抓取列表中至少一条记录，页面等待超时 20s，整体执行在 90s 内完成
+
+**Given** fetch_sample 返回的样本数据
+**When** 调用 `social_media.extract_fields(sample)`
+**Then** 返回包含以下字段的标准 FieldInfo 列表：标题、发布日期、状态、覆盖人数、获赞数和心情数、评论数、分享次数
+
+**Given** 字段提取完成
+**When** `write_raw_report("social_media", fields, ...)` 被调用
+**Then** `reports/social_media-raw.md` 包含实际字段表格和需求字段对照区块
+
+**Given** 页面出现验证码或人机验证
+**When** `fetch_sample()` 检测到
+**Then** 抛出 `RuntimeError("[social_media] 遇到验证码，请手动完成验证后重新运行")`，浏览器正确关闭
+
+**Given** 单元测试环境
+**When** 运行 `tests/test_social_media.py`
+**Then** `extract_fields()` 单元测试通过；`authenticate()` 和 `fetch_sample()` 标注 `@pytest.mark.integration`
+
 ---
 
 ## Epic 5: 统一 CLI 验证入口与完整流水线
