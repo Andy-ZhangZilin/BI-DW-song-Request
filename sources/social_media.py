@@ -402,13 +402,17 @@ def _login(page, username: str, password: str) -> None:
         popup.keyboard.press("Enter")
 
     # 步骤 3：等待登录完成（可能需要人机验证）
-    # 给 180 秒，足够用户在 headed 模式下手动完成 reCAPTCHA
+    # 轮询检查 URL，只要离开登录页进入 business.facebook.com 即视为成功
     logger.info("[social_media] 等待登录完成（如有人机验证请手动完成）...")
-    page.wait_for_url("**/latest/**", timeout=180_000)
-
-    # 验证确实离开了登录页（凭证错误/2FA 重定向时 URL 可能误匹配）
-    if "login" in page.url.lower():
-        raise RuntimeError("[social_media] 登录后仍停留在登录页，凭证可能无效")
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        current_url = page.url.lower()
+        # 已经在 Business Suite 内部（非登录页）
+        if "business.facebook.com" in current_url and "login" not in current_url:
+            logger.info(f"[social_media] 登录成功，当前页面：{page.url}")
+            return
+        time.sleep(2)
+    raise PlaywrightTimeoutError("[social_media] 登录等待超过 180 秒")
 
 
 def _check_captcha(page) -> None:
