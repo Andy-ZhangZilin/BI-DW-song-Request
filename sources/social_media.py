@@ -290,20 +290,18 @@ def _login(page, username: str, password: str) -> None:
     except Exception:
         # 路径 B：需要点击"使用 Facebook 登录"按钮触发 popup
         logger.info("[social_media] 登录路径 B：popup 弹窗登录")
+        fb_login_btn = page.get_by_text("使用 Facebook 登录").first
         with page.expect_popup(timeout=PAGE_WAIT_TIMEOUT_MS) as popup_info:
-            try:
-                page.click("text=使用 Facebook 登录", timeout=PAGE_WAIT_TIMEOUT_MS)
-            except Exception:
-                try:
-                    page.get_by_role("link", name="使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
-                except Exception:
-                    page.get_by_text("使用 Facebook 登录").click(timeout=PAGE_WAIT_TIMEOUT_MS)
+            fb_login_btn.click(no_wait_after=True)
 
         popup = popup_info.value
-        popup.wait_for_selector("input[name='email']", timeout=PAGE_WAIT_TIMEOUT_MS)
+        logger.info("[social_media] popup 已捕获，等待登录表单加载")
+        popup.wait_for_load_state("domcontentloaded", timeout=PAGE_WAIT_TIMEOUT_MS)
+        popup.wait_for_selector("input[name='email']", state="visible", timeout=PAGE_WAIT_TIMEOUT_MS)
+        logger.info("[social_media] popup 登录表单已加载，填写凭证")
         popup.fill("input[name='email']", username)
         popup.fill("input[name='pass']", password)
-        popup.click("button[name='login']")
+        popup.click("button[name='login']", no_wait_after=True)
 
     # 步骤 3：等待跳转回 Business Suite 主页面
     page.wait_for_url("**/latest/**", timeout=PAGE_WAIT_TIMEOUT_MS)
