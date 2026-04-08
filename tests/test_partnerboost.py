@@ -179,10 +179,12 @@ def test_authenticate_closes_browser_on_failure(mock_credentials):
 
 
 def test_fetch_sample_raises_on_captcha_after_login(mock_credentials):
-    """AC5: 登录后页面含 'captcha' 关键词时抛出 RuntimeError，且浏览器已关闭。"""
+    """AC5: 登录后页面可见文本含 'captcha' 关键词时抛出 RuntimeError，且浏览器已关闭。"""
     page_mock = MagicMock()
-    # 模拟登录成功后页面内容含验证码
-    page_mock.content.return_value = "<html>Please complete the captcha challenge</html>"
+    # 模拟 body.inner_text() 返回含验证码的可见文本
+    body_mock = MagicMock()
+    body_mock.inner_text.return_value = "Please complete the captcha challenge"
+    page_mock.query_selector.return_value = body_mock
     ctx, browser = _make_pw_mock(page_mock)
 
     with patch("sources.partnerboost.sync_playwright", return_value=ctx):
@@ -193,9 +195,11 @@ def test_fetch_sample_raises_on_captcha_after_login(mock_credentials):
 
 
 def test_fetch_sample_raises_on_robot_keyword(mock_credentials):
-    """AC5: 页面含 'robot' 关键词时抛出 RuntimeError。"""
+    """AC5: 页面可见文本含 'robot' 关键词时抛出 RuntimeError。"""
     page_mock = MagicMock()
-    page_mock.content.return_value = "<html>I am not a robot verification</html>"
+    body_mock = MagicMock()
+    body_mock.inner_text.return_value = "I am not a robot verification"
+    page_mock.query_selector.return_value = body_mock
     ctx, browser = _make_pw_mock(page_mock)
 
     with patch("sources.partnerboost.sync_playwright", return_value=ctx):
@@ -208,7 +212,9 @@ def test_fetch_sample_raises_on_robot_keyword(mock_credentials):
 def test_fetch_sample_closes_browser_on_captcha(mock_credentials):
     """AC5: 验证码 RuntimeError 时 finally 块仍关闭浏览器。"""
     page_mock = MagicMock()
-    page_mock.content.return_value = "captcha required"
+    body_mock = MagicMock()
+    body_mock.inner_text.return_value = "captcha required"
+    page_mock.query_selector.return_value = body_mock
     ctx, browser = _make_pw_mock(page_mock)
 
     with patch("sources.partnerboost.sync_playwright", return_value=ctx):

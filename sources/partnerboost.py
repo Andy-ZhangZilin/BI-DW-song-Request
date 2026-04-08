@@ -35,10 +35,16 @@ _PAGE_TIMEOUT = 30_000
 _BROWSER_ARGS = ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
 
 
-def _check_captcha(content: str) -> None:
-    """检查页面内容是否含验证码关键词，是则抛出 RuntimeError。"""
-    lower = content.lower()
-    if any(kw in lower for kw in _CAPTCHA_KEYWORDS):
+def _check_captcha(page) -> None:
+    """检查页面可见文本是否含验证码关键词，是则抛出 RuntimeError。
+
+    仅检查 body 可见文本（inner_text），避免 HTML 中 reCAPTCHA script src 误触发。
+    """
+    body = page.query_selector("body")
+    if not body:
+        return
+    visible_text = body.inner_text().lower()
+    if any(kw in visible_text for kw in _CAPTCHA_KEYWORDS):
         raise RuntimeError(f"[{SOURCE_NAME}] 遇到验证码，请手动完成验证后重新运行")
 
 
@@ -117,14 +123,14 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             )
 
             # 登录后验证码检测
-            _check_captcha(page.content())
+            _check_captcha(page)
 
             # ── 导航至报表页 ──────────────────────────────────────────────────
             page.goto(REPORTS_URL, timeout=_PAGE_TIMEOUT, wait_until="domcontentloaded")
             page.wait_for_selector("table", timeout=_PAGE_TIMEOUT)
 
             # 报表页验证码检测
-            _check_captcha(page.content())
+            _check_captcha(page)
 
             # ── 抓取表格数据 ──────────────────────────────────────────────────
             records = _extract_table_records(page)
