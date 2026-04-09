@@ -221,7 +221,9 @@ def extract_fields(sample: list[dict]) -> list[dict]:
     for key in sorted(all_keys):
         values = [rec.get(key) for rec in sample]
         non_empty = [v for v in values if not _is_empty(v)]
-        sample_value = non_empty[0] if non_empty else None
+        # 优先选非零值作为示例，更有代表性
+        non_zero = [v for v in non_empty if v != 0 and v != 0.0]
+        sample_value = non_zero[0] if non_zero else (non_empty[0] if non_empty else None)
         nullable = any(_is_empty(v) for v in values)
         data_type = _infer_type(sample_value)
 
