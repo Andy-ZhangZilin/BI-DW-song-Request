@@ -796,10 +796,13 @@ def fetch_sample(table_name: Optional[str] = None) -> List[Dict]:
 
 
 def extract_fields(sample: List[Dict]) -> List[Dict]:
-    """从样本记录中提取字段信息。
+    """从样本记录中提取字段信息（递归展开嵌套结构）。
 
-    从第一条记录中提取所有顶层字段，推断数据类型（string/number/boolean/array/object/null）。
-    嵌套结构（如 address、skus）作为整体字段返回，不展开内层键。
+    递归遍历嵌套 dict 和 array，使用点号分隔路径表示层级关系：
+    - dict 嵌套：parent.child
+    - array 嵌套：parent[].child（取第一个元素展开）
+
+    叶子节点（string/number/boolean/null）和空 array/dict 作为最终字段输出。
 
     Returns:
         list[dict]: 标准 FieldInfo 格式列表，每项含 field_name/data_type/sample_value/nullable
@@ -825,12 +828,60 @@ def extract_fields(sample: List[Dict]) -> List[Dict]:
             return "object"
         return "string"
 
-    for key, value in first_record.items():
-        fields.append({
-            "field_name": key,
-            "data_type": _infer_type(value),
-            "sample_value": value,
-            "nullable": value is None,
-        })
+    def _truncate_sample(value: object, max_len: int = 200) -> object:
+        """截断过长的 sample_value，避免报告表格过宽。"""
+        s = str(value)
+        if len(s) <= max_len:
+            return value
+        return s[:max_len] + "..."
+
+    def _walk(obj: object, prefix: str) -> None:
+        """递归遍历，将叶子字段追加到 fields 列表。"""
+        if isinstance(obj, dict):
+            if not obj:
+                # 空 dict，作为叶子输出
+                fields.append({
+                    "field_name": prefix,
+                    "data_type": "object",
+                    "sample_value": {},
+                    "nullable": False,
+                })
+                return
+            for key, value in obj.items():
+                child_path = f"{prefix}.{key}" if prefix else key
+                _walk(value, child_path)
+        elif isinstance(obj, list):
+            if not obj:
+                # 空 array，作为叶子输出
+                fields.append({
+                    "field_name": prefix,
+                    "data_type": "array",
+                    "sample_value": [],
+                    "nullable": False,
+                })
+                return
+            # 取第一个元素展开，路径加 []
+            first_elem = obj[0]
+            arr_path = f"{prefix}[]"
+            if isinstance(first_elem, dict):
+                _walk(first_elem, arr_path)
+            else:
+                # 基础类型数组，直接输出
+                fields.append({
+                    "field_name": arr_path,
+                    "data_type": f"array<{_infer_type(first_elem)}>",
+                    "sample_value": _truncate_sample(obj),
+                    "nullable": False,
+                })
+        else:
+            # 叶子节点（string/number/boolean/null）
+            fields.append({
+                "field_name": prefix,
+                "data_type": _infer_type(obj),
+                "sample_value": _truncate_sample(obj),
+                "nullable": obj is None,
+            })
+
+    _walk(first_record, "")
 
     return fields

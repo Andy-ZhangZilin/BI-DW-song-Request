@@ -337,11 +337,14 @@ class TestExtractFields:
             assert "nullable" in field
 
     def test_extract_fields_data_types(self, sample_order):
-        """data_type 值仅为合法类型之一。"""
-        valid_types = {"string", "number", "boolean", "array", "object", "null"}
+        """data_type 值仅为合法类型之一（含 array<T> 复合类型）。"""
+        base_types = {"string", "number", "boolean", "array", "object", "null"}
         fields = tiktok.extract_fields(sample_order)
         for field in fields:
-            assert field["data_type"] in valid_types
+            dt = field["data_type"]
+            # 支持 array<string> 等复合类型
+            is_valid = dt in base_types or dt.startswith("array<")
+            assert is_valid, f"非法 data_type: {dt}"
 
     def test_extract_fields_nullable_when_none(self):
         """值为 None 时 nullable=True。"""
@@ -385,18 +388,22 @@ class TestExtractFields:
         assert field["data_type"] == "boolean"
 
     def test_extract_fields_array_type(self, sample_order):
-        """skus 字段类型应为 array。"""
+        """skus 数组应被递归展开，子字段路径以 skus[]. 开头。"""
         fields = tiktok.extract_fields(sample_order)
-        field = next((f for f in fields if f["field_name"] == "skus"), None)
+        sku_fields = [f for f in fields if f["field_name"].startswith("skus[]")]
+        assert len(sku_fields) > 0
+        # 应包含 skus[].id 等子字段
+        field = next((f for f in fields if f["field_name"] == "skus[].id"), None)
         assert field is not None
-        assert field["data_type"] == "array"
 
     def test_extract_fields_object_type(self, sample_order):
-        """recipient_address 字段类型应为 object。"""
+        """recipient_address 对象应被递归展开，子字段路径以 recipient_address. 开头。"""
         fields = tiktok.extract_fields(sample_order)
-        field = next((f for f in fields if f["field_name"] == "recipient_address"), None)
+        addr_fields = [f for f in fields if f["field_name"].startswith("recipient_address.")]
+        assert len(addr_fields) > 0
+        # 应包含 recipient_address.name 等子字段
+        field = next((f for f in fields if f["field_name"] == "recipient_address.name"), None)
         assert field is not None
-        assert field["data_type"] == "object"
 
     def test_extract_fields_nullable_is_bool(self, sample_order):
         """nullable 字段类型应为 bool。"""
