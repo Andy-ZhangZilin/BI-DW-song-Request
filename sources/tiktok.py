@@ -587,13 +587,17 @@ def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]
     )
     resp.raise_for_status()
     data = resp.json()
+    # DEBUG: 打印原始 API 响应，便于排查字段缺失问题
+    import json as _json
+    logger.info(
+        "[tiktok] shop_product_performance 原始响应:\n%s",
+        _json.dumps(data, indent=2, ensure_ascii=False, default=str),
+    )
     if data.get("code") != 0:
         raise RuntimeError(
             f"[tiktok] 店铺商品表现查询失败，code={data.get('code')}，message={data.get('message')}"
         )
     resp_data = data.get("data") or {}
-    # 按 API 文档结构返回：data 下有 latest_available_date（string）和 performance（object）
-    # performance 作为整体 object 字段保留，不展平，体现层级关系
     if not resp_data.get("performance"):
         logger.warning("[tiktok] 店铺商品表现查询返回空，字段发现将跳过")
         return []
