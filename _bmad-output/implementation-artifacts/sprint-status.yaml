@@ -64,7 +64,7 @@ development_status:
   epic-3: in-progress
   3-1-钉钉多维表数据源接入: done
   3-2-youtube-数据源接入: done
-  3-3-youtube-url-视频统计数据源接入: ready-for-dev
+  3-3-youtube-url-视频统计数据源接入: done
   epic-3-retrospective: optional
 
   # Epic 4: 爬虫数据源接入
