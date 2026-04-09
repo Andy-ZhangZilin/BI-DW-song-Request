@@ -252,3 +252,45 @@ def extract_fields(sample: list[dict]) -> list[dict]:
 
     _flatten(record)
     return fields
+
+
+# ---------------------------------------------------------------------------
+# CLI 入口：python -m sources.youtube <URL>
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import os
+    import sys
+    from pathlib import Path
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
+
+    if len(sys.argv) < 2:
+        print("用法: python -m sources.youtube <YouTube视频URL>")
+        print("示例: python -m sources.youtube https://www.youtube.com/watch?v=1laF2zVhbcE")
+        sys.exit(1)
+
+    video_url = sys.argv[1]
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    if not api_key:
+        print("错误: .env 中未配置 YOUTUBE_API_KEY")
+        sys.exit(1)
+
+    video_id = extract_video_id(video_url)
+    resp = requests.get(
+        f"{BASE_URL}/videos",
+        params={"part": "statistics", "id": video_id, "key": api_key},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    items = resp.json().get("items", [])
+    if not items:
+        print(f"错误: 视频 {video_id} 未找到")
+        sys.exit(1)
+
+    stats = items[0].get("statistics", {})
+    print(f"视频ID:  {video_id}")
+    print(f"播放数:  {stats.get('viewCount', 'N/A')}")
+    print(f"点赞数:  {stats.get('likeCount', 'N/A')}")
+    print(f"评论数:  {stats.get('commentCount', 'N/A')}")
