@@ -267,13 +267,23 @@ def _login(page, username: str, password: str) -> None:
         RuntimeError: 登录后仍停留在登录页（凭证错误或其他拦截）。
     """
     page.goto(AWIN_LOGIN_URL, timeout=PAGE_WAIT_TIMEOUT_MS)
-    page.fill("input[name='username']", username)
-    page.fill("input[name='password']", password)
+
+    # Step 1: 填入邮箱，点击 Continue（两步登录流程）
+    page.wait_for_selector("input[type='email'], input[name='username'], input[type='text']", timeout=PAGE_WAIT_TIMEOUT_MS)
+    email_input = page.query_selector("input[type='email']") or page.query_selector("input[name='username']") or page.query_selector("input[type='text']")
+    if email_input is None:
+        raise RuntimeError("[awin] 未找到邮箱输入框")
+    email_input.fill(username)
+    page.click("button[type='submit'], button:has-text('Continue')")
+
+    # Step 2: 等待密码框出现，填入密码并提交
+    page.wait_for_selector("input[type='password']", timeout=PAGE_WAIT_TIMEOUT_MS)
+    page.fill("input[type='password']", password)
     page.click("button[type='submit']")
     page.wait_for_url("**/awin/**", timeout=PAGE_WAIT_TIMEOUT_MS)
 
     # 验证确实离开了登录页（防止凭证错误时错误页 URL 也匹配 **/awin/**）
-    if "login" in page.url.lower():
+    if "login" in page.url.lower() or "prelogin" in page.url.lower():
         raise RuntimeError("[awin] 登录后仍停留在登录页，凭证可能无效")
 
 
