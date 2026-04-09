@@ -4,20 +4,35 @@
     "clicks": 76,
     "totalNo": 24,
     "totalValue": 2768.73,
-    "totalComm": 276.87
+    "totalComm": 276.87,
+    "conversionRate": 0.3158,
+    "aov": 115.3638,
+    "cpa": 11.5363,
+    "cpc": 3.6430,
+    "roi": 9.9989
   },
   {
     "impressions": 35,
     "clicks": 3,
     "totalNo": 0,
     "totalValue": 0.0,
-    "totalComm": 0.0
+    "totalComm": 0.0,
+    "conversionRate": 0.0,
+    "aov": null,
+    "cpa": null,
+    "cpc": 0.0,
+    "roi": null
   },
   {
     "impressions": 0,
     "clicks": 4624,
     "totalNo": 7,
     "totalValue": 836.2,
-    "totalComm": 83.62
+    "totalComm": 83.62,
+    "conversionRate": 0.0015,
+    "aov": 119.4571,
+    "cpa": 11.9457,
+    "cpc": 0.0181,
+    "roi": 9.9976
   }
 ]

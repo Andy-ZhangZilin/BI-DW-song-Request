@@ -45,8 +45,15 @@ DEFAULT_DATE_RANGE_DAYS = 7
 # 最大样本行数
 MAX_SAMPLE_ROWS = 20
 
-# Performance Over Time 目标字段（仅保留这些，去掉多余字段）
-TARGET_FIELDS = {"impressions", "clicks", "totalNo", "totalValue", "totalComm"}
+# Performance Over Time 原始字段（从 API 直接获取）
+RAW_FIELDS = {"impressions", "clicks", "totalNo", "totalValue", "totalComm"}
+
+# Performance Over Time 计算字段映射（字段名 -> 对应维度名）
+# Conversion Rate = totalNo / clicks
+# AOV = totalValue / totalNo
+# CPA = totalComm / totalNo
+# CPC = totalComm / clicks
+# ROI = totalValue / totalComm
 
 
 # ---------------------------------------------------------------------------
@@ -153,11 +160,8 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             logger.error(f"[awin] fetch_sample ... 失败：API 返回非列表格式 — {type(sample)}")
             raise RuntimeError("[awin] API 返回格式异常：期望列表")
 
-        # 限制样本行数，并只保留目标字段
-        sample = [
-            {k: v for k, v in rec.items() if k in TARGET_FIELDS}
-            for rec in sample[:MAX_SAMPLE_ROWS]
-        ]
+        # 限制样本行数，只保留原始字段并计算派生字段
+        sample = [_enrich_record(rec) for rec in sample[:MAX_SAMPLE_ROWS]]
 
         if not sample:
             logger.warning("[awin] API 返回空数据，返回空样本")
@@ -229,6 +233,29 @@ def extract_fields(sample: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 # 私有辅助函数
 # ---------------------------------------------------------------------------
+
+def _safe_div(a, b) -> Optional[float]:
+    """安全除法，分母为 0 时返回 None。"""
+    if not b:
+        return None
+    return round(a / b, 4)
+
+
+def _enrich_record(rec: dict) -> dict:
+    """保留原始目标字段，并计算 5 个派生字段。"""
+    clicks = rec.get("clicks", 0) or 0
+    total_no = rec.get("totalNo", 0) or 0
+    total_value = rec.get("totalValue", 0.0) or 0.0
+    total_comm = rec.get("totalComm", 0.0) or 0.0
+
+    enriched = {k: v for k, v in rec.items() if k in RAW_FIELDS}
+    enriched["conversionRate"] = _safe_div(total_no, clicks)
+    enriched["aov"] = _safe_div(total_value, total_no)
+    enriched["cpa"] = _safe_div(total_comm, total_no)
+    enriched["cpc"] = _safe_div(total_comm, clicks)
+    enriched["roi"] = _safe_div(total_value, total_comm)
+    return enriched
+
 
 def _is_empty(value) -> bool:
     """判断值是否为空（None、空字符串、纯空白字符串）。"""

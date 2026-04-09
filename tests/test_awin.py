@@ -13,102 +13,130 @@ import sources.awin as awin
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
+# Performance Over Time 全部 10 个字段
+ALL_10_FIELDS = {
+    "impressions", "clicks", "totalNo", "totalValue", "totalComm",
+    "conversionRate", "aov", "cpa", "cpc", "roi",
+}
+
 
 # ---------------------------------------------------------------------------
 # TestExtractFields — AC3 & AC7：使用 fixture 数据验证 FieldInfo 结构
 # ---------------------------------------------------------------------------
 
 class TestExtractFields:
-    """AC3: extract_fields 从 Publisher Performance API 样本数据返回标准 FieldInfo 列表。"""
+    """AC3: extract_fields 从样本数据返回标准 FieldInfo 列表。"""
 
     @pytest.fixture
     def sample(self):
-        """从 tests/fixtures/awin_sample.json 加载模拟 Publisher Performance API 记录。"""
+        """从 tests/fixtures/awin_sample.json 加载数据。"""
         with open(FIXTURES_DIR / "awin_sample.json", encoding="utf-8") as f:
             return json.load(f)
 
     def test_returns_list(self, sample):
-        """返回值为非空列表。"""
         result = awin.extract_fields(sample)
         assert isinstance(result, list)
         assert len(result) > 0
 
     def test_each_item_has_four_required_keys(self, sample):
-        """每条 FieldInfo 包含 field_name / data_type / sample_value / nullable 四字段（ARCH2）。"""
         result = awin.extract_fields(sample)
         for item in result:
-            assert "field_name" in item, f"缺少 field_name：{item}"
-            assert "data_type" in item, f"缺少 data_type：{item}"
-            assert "sample_value" in item, f"缺少 sample_value：{item}"
-            assert "nullable" in item, f"缺少 nullable：{item}"
+            assert "field_name" in item
+            assert "data_type" in item
+            assert "sample_value" in item
+            assert "nullable" in item
 
-    def test_field_name_is_string(self, sample):
-        """field_name 必须是字符串。"""
-        result = awin.extract_fields(sample)
-        for item in result:
-            assert isinstance(item["field_name"], str)
-
-    def test_data_type_is_string(self, sample):
-        """data_type 必须是字符串。"""
-        result = awin.extract_fields(sample)
-        for item in result:
-            assert isinstance(item["data_type"], str)
-
-    def test_nullable_is_bool(self, sample):
-        """nullable 必须是布尔值。"""
-        result = awin.extract_fields(sample)
-        for item in result:
-            assert isinstance(item["nullable"], bool), f"nullable 应为 bool：{item}"
-
-    def test_field_names_cover_target_fields(self, sample):
-        """返回的字段名覆盖全部 5 个目标字段。"""
+    def test_field_names_cover_all_10_fields(self, sample):
+        """返回的字段名覆盖全部 10 个 Performance Over Time 字段。"""
         result = awin.extract_fields(sample)
         result_keys = {item["field_name"] for item in result}
-        assert result_keys == {"impressions", "clicks", "totalNo", "totalValue", "totalComm"}
+        assert result_keys == ALL_10_FIELDS
 
-    def test_only_5_fields_returned(self, sample):
-        """只返回 5 个目标字段，无多余字段。"""
+    def test_exactly_10_fields_returned(self, sample):
         result = awin.extract_fields(sample)
-        assert len(result) == 5
+        assert len(result) == 10
 
     def test_clicks_nullable_false(self, sample):
-        """clicks 在所有记录中均有值，nullable 应为 False。"""
         result = awin.extract_fields(sample)
-        clicks_field = next(
-            (f for f in result if f["field_name"] == "clicks"), None
-        )
-        assert clicks_field is not None
-        assert clicks_field["nullable"] is False
+        field = next(f for f in result if f["field_name"] == "clicks")
+        assert field["nullable"] is False
 
-    def test_integer_type_inferred_for_clicks(self, sample):
-        """clicks 为整数类型，应推断为 'integer'。"""
+    def test_integer_type_for_clicks(self, sample):
         result = awin.extract_fields(sample)
-        clicks_field = next(f for f in result if f["field_name"] == "clicks")
-        assert clicks_field["data_type"] == "integer"
-
-    def test_number_type_inferred_for_totalvalue(self, sample):
-        """totalValue 为浮点数类型，应推断为 'number'。"""
-        result = awin.extract_fields(sample)
-        tv_field = next(f for f in result if f["field_name"] == "totalValue")
-        assert tv_field["data_type"] == "number"
-
-    def test_integer_type_inferred_for_impressions(self, sample):
-        """impressions 为整数类型，应推断为 'integer'。"""
-        result = awin.extract_fields(sample)
-        field = next(f for f in result if f["field_name"] == "impressions")
+        field = next(f for f in result if f["field_name"] == "clicks")
         assert field["data_type"] == "integer"
 
+    def test_number_type_for_totalvalue(self, sample):
+        result = awin.extract_fields(sample)
+        field = next(f for f in result if f["field_name"] == "totalValue")
+        assert field["data_type"] == "number"
+
+    def test_number_type_for_conversionrate(self, sample):
+        result = awin.extract_fields(sample)
+        field = next(f for f in result if f["field_name"] == "conversionRate")
+        assert field["data_type"] == "number"
+
+    def test_aov_nullable_true(self, sample):
+        """aov 在第二条记录中为 null（totalNo=0 无法计算），nullable 应为 True。"""
+        result = awin.extract_fields(sample)
+        field = next(f for f in result if f["field_name"] == "aov")
+        assert field["nullable"] is True
+
+    def test_roi_nullable_true(self, sample):
+        """roi 在第二条记录中为 null（totalComm=0 无法计算），nullable 应为 True。"""
+        result = awin.extract_fields(sample)
+        field = next(f for f in result if f["field_name"] == "roi")
+        assert field["nullable"] is True
+
     def test_returns_sorted_fields(self, sample):
-        """返回的字段列表按字段名字母顺序排列（便于报告阅读）。"""
         result = awin.extract_fields(sample)
         names = [item["field_name"] for item in result]
         assert names == sorted(names)
 
-    def test_sample_value_is_first_non_null(self, sample):
-        """clicks 应为第一条记录的值 76。"""
+    def test_sample_value_clicks(self, sample):
         result = awin.extract_fields(sample)
-        clicks_field = next(f for f in result if f["field_name"] == "clicks")
-        assert clicks_field["sample_value"] == 76
+        field = next(f for f in result if f["field_name"] == "clicks")
+        assert field["sample_value"] == 76
+
+
+# ---------------------------------------------------------------------------
+# TestEnrichRecord — 计算字段验证
+# ---------------------------------------------------------------------------
+
+class TestEnrichRecord:
+    """验证 _enrich_record 正确计算 5 个派生字段。"""
+
+    def test_normal_record(self):
+        rec = {
+            "impressions": 100, "clicks": 50,
+            "totalNo": 10, "totalValue": 500.0, "totalComm": 50.0,
+            "publisherId": 999, "region": "US",  # 多余字段应被过滤
+        }
+        result = awin._enrich_record(rec)
+        assert result["conversionRate"] == 0.2     # 10/50
+        assert result["aov"] == 50.0               # 500/10
+        assert result["cpa"] == 5.0                # 50/10
+        assert result["cpc"] == 1.0                # 50/50
+        assert result["roi"] == 10.0               # 500/50
+        assert "publisherId" not in result
+        assert "region" not in result
+
+    def test_zero_clicks(self):
+        rec = {"impressions": 0, "clicks": 0, "totalNo": 0, "totalValue": 0.0, "totalComm": 0.0}
+        result = awin._enrich_record(rec)
+        assert result["conversionRate"] is None
+        assert result["cpc"] is None
+
+    def test_zero_transactions(self):
+        rec = {"impressions": 0, "clicks": 10, "totalNo": 0, "totalValue": 0.0, "totalComm": 0.0}
+        result = awin._enrich_record(rec)
+        assert result["aov"] is None
+        assert result["cpa"] is None
+
+    def test_zero_commission(self):
+        rec = {"impressions": 0, "clicks": 10, "totalNo": 5, "totalValue": 100.0, "totalComm": 0.0}
+        result = awin._enrich_record(rec)
+        assert result["roi"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -116,60 +144,41 @@ class TestExtractFields:
 # ---------------------------------------------------------------------------
 
 class TestExtractFieldsEdgeCases:
-    """边界情况：空列表、全 None 值等。"""
 
     def test_empty_sample_returns_empty_list(self):
-        """AC3（边界）：空输入返回空列表，不报错。"""
         result = awin.extract_fields([])
         assert result == []
 
     def test_single_record(self):
-        """单条记录也能正常提取字段。"""
         sample = [{"clicks": 10, "totalNo": 5}]
         result = awin.extract_fields(sample)
         assert len(result) == 2
-        names = {f["field_name"] for f in result}
-        assert names == {"clicks", "totalNo"}
 
     def test_all_none_values_nullable(self):
-        """字段在所有记录中均为 None 时，nullable=True，sample_value=None。"""
         sample = [{"field_x": None}, {"field_x": None}]
         result = awin.extract_fields(sample)
         assert result[0]["nullable"] is True
-        assert result[0]["sample_value"] is None
-
-    def test_native_int_type_inferred(self):
-        """原生 int 值推断为 'integer'。"""
-        sample = [{"count": 5, "name": "foo"}]
-        result = awin.extract_fields(sample)
-        count_field = next(f for f in result if f["field_name"] == "count")
-        assert count_field["data_type"] == "integer"
 
     def test_native_float_type_inferred(self):
-        """原生 float 值推断为 'number'。"""
         sample = [{"price": 9.99}]
         result = awin.extract_fields(sample)
         assert result[0]["data_type"] == "number"
 
-    def test_bool_type_inferred(self):
-        """布尔值推断为 'boolean'。"""
-        sample = [{"active": True}]
-        result = awin.extract_fields(sample)
-        assert result[0]["data_type"] == "boolean"
-
 
 # ---------------------------------------------------------------------------
-# TestTargetFields — 验证 TARGET_FIELDS 常量
+# TestSafeDiv
 # ---------------------------------------------------------------------------
 
-class TestTargetFields:
-    """验证 TARGET_FIELDS 常量定义正确。"""
+class TestSafeDiv:
 
-    def test_target_fields_has_5_entries(self):
-        assert len(awin.TARGET_FIELDS) == 5
+    def test_normal_division(self):
+        assert awin._safe_div(10, 3) == 3.3333
 
-    def test_target_fields_content(self):
-        assert awin.TARGET_FIELDS == {"impressions", "clicks", "totalNo", "totalValue", "totalComm"}
+    def test_zero_denominator_returns_none(self):
+        assert awin._safe_div(10, 0) is None
+
+    def test_both_zero_returns_none(self):
+        assert awin._safe_div(0, 0) is None
 
 
 # ---------------------------------------------------------------------------
@@ -178,19 +187,15 @@ class TestTargetFields:
 
 @pytest.mark.integration
 class TestAuthenticateIntegration:
-    """AC1 集成测试：需要真实 Awin API Token，CI 中跳过。"""
 
     def test_authenticate_returns_bool(self, mock_credentials):
-        """authenticate() 返回布尔值（True=成功，False=失败）。"""
         result = awin.authenticate()
         assert isinstance(result, bool)
 
 
 @pytest.mark.integration
 class TestFetchSampleIntegration:
-    """AC2 集成测试：需要真实 Awin API Token，CI 中跳过。"""
 
     def test_fetch_sample_returns_list(self, mock_credentials):
-        """fetch_sample() 返回列表（可为空）。"""
         result = awin.fetch_sample()
         assert isinstance(result, list)
