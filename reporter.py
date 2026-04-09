@@ -71,7 +71,7 @@ def _escape_cell(value: object) -> str:
     """将单元格值转换为安全的 Markdown 表格字符串：None 转为空串，转义竖线。"""
     if value is None:
         return ""
-    return str(value).replace("|", "\\|")
+    return str(value).replace("\n", " ").replace("\r", "").replace("|", "\\|")
 
 
 def _render_field_table(fields: List[Dict]) -> List[str]:
