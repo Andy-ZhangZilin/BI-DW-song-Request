@@ -3,13 +3,13 @@
 所有 source 模块必须从此模块导入凭证，禁止直接调用 os.getenv()。
 
 公开接口：
-    get_credentials() -> dict[str, str]      — 加载并校验所有必需凭证
+    get_credentials(source_name=None) -> dict[str, str] — 加载并校验凭证（按源或全量）
     get_optional_config(key, default) -> str — 读取可选配置项（不在必需列表中）
     mask_credential(value: str) -> str       — 日志脱敏唯一入口，凭证显示前 4 位 + ****
 """
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
@@ -34,20 +34,43 @@ _REQUIRED_KEYS: List[str] = [
     "YOUTUBE_STUDIO_PASSWORD",
 ]
 
+# 每个数据源所需的凭证 key 映射表
+_SOURCE_CREDENTIALS: Dict[str, List[str]] = {
+    "triplewhale": ["TRIPLEWHALE_API_KEY"],
+    "tiktok": ["TIKTOK_APP_KEY", "TIKTOK_APP_SECRET"],
+    "dingtalk": ["DINGTALK_APP_KEY", "DINGTALK_APP_SECRET", "DINGTALK_WORKBOOK_ID"],
+    "youtube": ["YOUTUBE_API_KEY"],
+    "youtube_url": ["YOUTUBE_API_KEY"],
+    "awin": ["AWIN_API_TOKEN", "AWIN_ADVERTISER_ID"],
+    "cartsee": ["CARTSEE_USERNAME", "CARTSEE_PASSWORD"],
+    "partnerboost": ["PARTNERBOOST_USERNAME", "PARTNERBOOST_PASSWORD"],
+    "social_media": ["FACEBOOK_USERNAME", "FACEBOOK_PASSWORD"],
+    "youtube_studio": ["YOUTUBE_STUDIO_EMAIL", "YOUTUBE_STUDIO_PASSWORD"],
+}
 
-def get_credentials() -> Dict[str, str]:
-    """加载并校验所有必需凭证，缺失时抛出 ValueError。
+
+def get_credentials(source_name: Optional[str] = None) -> Dict[str, str]:
+    """加载并校验凭证，缺失时抛出 ValueError。
+
+    Args:
+        source_name: 数据源名称。为 None 时全量校验（--all 模式）；
+                     有值时只校验该源所需凭证（--source 模式）。
 
     Returns:
-        包含所有凭证键值的字典
+        包含凭证键值的字典
 
     Raises:
         ValueError: 当一个或多个必需凭证键缺失时
     """
+    if source_name is not None:
+        keys_to_check = _SOURCE_CREDENTIALS.get(source_name, [])
+    else:
+        keys_to_check = _REQUIRED_KEYS
+
     creds: Dict[str, str] = {}
     missing: List[str] = []
 
-    for key in _REQUIRED_KEYS:
+    for key in keys_to_check:
         value = os.getenv(key)
         if not value:
             missing.append(key)

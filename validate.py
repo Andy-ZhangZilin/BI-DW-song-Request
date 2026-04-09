@@ -34,6 +34,7 @@ SOURCES: Dict[str, str] = {
     "tiktok":       "sources.tiktok",
     "dingtalk":     "sources.dingtalk",
     "youtube":      "sources.youtube",
+    "youtube_url":  "sources.youtube_url",
     "awin":         "sources.awin",
     "cartsee":      "sources.cartsee",
     "partnerboost": "sources.partnerboost",
@@ -197,8 +198,9 @@ def main() -> None:
         sys.exit(1)
 
     # --- 启动阶段凭证快速失败 ---
+    # --source 模式只校验该源所需凭证；--all 模式全量校验
     try:
-        get_credentials()
+        get_credentials(source_name=args.source)
     except ValueError as e:
         logger.error(f"凭证校验失败，请检查 .env 文件：{e}")
         sys.exit(1)

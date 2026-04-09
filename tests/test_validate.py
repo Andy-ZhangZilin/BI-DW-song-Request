@@ -87,7 +87,7 @@ class TestHelpOutput:
         # 重建 parser 验证参数存在（直接检查 SOURCES 注册表和行为）
         assert "triplewhale" in validate.SOURCES
         assert "social_media" in validate.SOURCES
-        assert len(validate.SOURCES) == 9
+        assert len(validate.SOURCES) == 10
 
 
 # ---------------------------------------------------------------------------

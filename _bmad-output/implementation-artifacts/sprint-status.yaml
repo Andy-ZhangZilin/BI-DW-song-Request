@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-09  # Story 4.7 created（Awin API migration）
+last_updated: 2026-04-09  # Sprint Change: 新增 Story 3.3 youtube_url + 凭证按源校验
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -60,9 +60,11 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: 标准 API 数据源接入
+  # Sprint Change 2026-04-09: 新增 Story 3.3 youtube_url 按视频 URL 获取播放数/点赞数
   epic-3: in-progress
   3-1-钉钉多维表数据源接入: done
   3-2-youtube-数据源接入: done
+  3-3-youtube-url-视频统计数据源接入: ready-for-dev
   epic-3-retrospective: optional
 
   # Epic 4: 爬虫数据源接入
