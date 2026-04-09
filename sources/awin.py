@@ -280,10 +280,16 @@ def _login(page, username: str, password: str) -> None:
     page.wait_for_selector("input[type='password']", timeout=PAGE_WAIT_TIMEOUT_MS)
     page.fill("input[type='password']", password)
     page.click("button[type='submit']")
-    page.wait_for_url("**/awin/**", timeout=PAGE_WAIT_TIMEOUT_MS)
 
-    # 验证确实离开了登录页（防止凭证错误时错误页 URL 也匹配 **/awin/**）
-    if "login" in page.url.lower() or "prelogin" in page.url.lower():
+    # 等待页面跳出登录流程（URL 不再含 login/prelogin/idp 关键词）
+    page.wait_for_function(
+        "() => !['login', 'prelogin', '/idp/'].some(k => window.location.href.includes(k))",
+        timeout=PAGE_WAIT_TIMEOUT_MS,
+    )
+
+    # 验证确实离开了登录页
+    current_url = page.url.lower()
+    if any(k in current_url for k in ("login", "prelogin", "/idp/")):
         raise RuntimeError("[awin] 登录后仍停留在登录页，凭证可能无效")
 
 
