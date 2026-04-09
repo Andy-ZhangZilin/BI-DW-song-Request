@@ -266,12 +266,10 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
-    if len(sys.argv) < 2:
-        print("用法: python -m sources.youtube <YouTube视频URL>")
-        print("示例: python -m sources.youtube https://www.youtube.com/watch?v=1laF2zVhbcE")
-        sys.exit(1)
+    # 默认验证用视频 URL（可通过命令行参数覆盖）
+    _DEFAULT_URL = "https://www.youtube.com/watch?v=1laF2zVhbcE"
+    video_url = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_URL
 
-    video_url = sys.argv[1]
     api_key = os.getenv("YOUTUBE_API_KEY")
     if not api_key:
         print("错误: .env 中未配置 YOUTUBE_API_KEY")
