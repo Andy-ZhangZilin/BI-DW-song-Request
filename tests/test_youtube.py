@@ -210,3 +210,118 @@ def test_extract_fields_string_number_in_statistics(youtube_fixture):
     assert len(view_count_fields) >= 1
     # YouTube API 将统计数值以字符串形式返回
     assert view_count_fields[0]["data_type"] == "string"
+
+
+# ---------------------------------------------------------------------------
+# extract_video_id() 测试
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("url,expected_id", [
+    ("https://www.youtube.com/watch?v=1laF2zVhbcE", "1laF2zVhbcE"),
+    ("https://youtube.com/watch?v=1laF2zVhbcE", "1laF2zVhbcE"),
+    ("https://youtu.be/1laF2zVhbcE", "1laF2zVhbcE"),
+    ("https://www.youtube.com/shorts/1laF2zVhbcE", "1laF2zVhbcE"),
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ&feature=related", "dQw4w9WgXcQ"),
+])
+def test_extract_video_id_valid_urls(url, expected_id):
+    """extract_video_id() 应正确解析各种合法 YouTube URL 格式。"""
+    assert youtube.extract_video_id(url) == expected_id
+
+
+def test_extract_video_id_invalid_url():
+    """extract_video_id() 遇到无法解析的 URL 应抛出 ValueError。"""
+    with pytest.raises(ValueError, match=r"\[youtube\]"):
+        youtube.extract_video_id("https://www.bilibili.com/video/BV1xx")
+
+
+def test_extract_video_id_empty_string():
+    """extract_video_id() 传入空字符串应抛出 ValueError。"""
+    with pytest.raises(ValueError, match=r"\[youtube\]"):
+        youtube.extract_video_id("")
+
+
+# ---------------------------------------------------------------------------
+# fetch_video_stats() 测试
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def video_stats_fixture():
+    """加载 youtube_video_stats.json fixture，返回完整 API 响应体。"""
+    with open(FIXTURES_DIR / "youtube_video_stats.json", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def test_fetch_video_stats_returns_dict(mock_credentials, video_stats_fixture):
+    """fetch_video_stats() 应返回包含 video_id / viewCount / likeCount 的 dict。"""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = video_stats_fixture
+    mock_resp.raise_for_status = MagicMock()
+    with patch("sources.youtube.requests.get", return_value=mock_resp):
+        result = youtube.fetch_video_stats("https://www.youtube.com/watch?v=1laF2zVhbcE")
+    assert isinstance(result, dict)
+    assert result["video_id"] == "1laF2zVhbcE"
+    assert "viewCount" in result
+    assert "likeCount" in result
+
+
+def test_fetch_video_stats_correct_values(mock_credentials, video_stats_fixture):
+    """fetch_video_stats() 应返回 fixture 中的正确播放数和点赞数。"""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = video_stats_fixture
+    mock_resp.raise_for_status = MagicMock()
+    with patch("sources.youtube.requests.get", return_value=mock_resp):
+        result = youtube.fetch_video_stats("https://www.youtube.com/watch?v=1laF2zVhbcE")
+    assert result["viewCount"] == "5000000"
+    assert result["likeCount"] == "200000"
+
+
+def test_fetch_video_stats_uses_video_id_in_request(mock_credentials, video_stats_fixture):
+    """fetch_video_stats() 发起请求时 params 中应包含正确的 video_id。"""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = video_stats_fixture
+    mock_resp.raise_for_status = MagicMock()
+    with patch("sources.youtube.requests.get", return_value=mock_resp) as mock_get:
+        youtube.fetch_video_stats("https://www.youtube.com/watch?v=1laF2zVhbcE")
+    params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
+    assert params.get("id") == "1laF2zVhbcE"
+    assert params.get("part") == "statistics"
+
+
+def test_fetch_video_stats_raises_on_empty_response(mock_credentials):
+    """fetch_video_stats() API 返回空 items 时应抛出 RuntimeError。"""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"items": []}
+    mock_resp.raise_for_status = MagicMock()
+    with patch("sources.youtube.requests.get", return_value=mock_resp):
+        with pytest.raises(RuntimeError, match=r"\[youtube\]"):
+            youtube.fetch_video_stats("https://www.youtube.com/watch?v=1laF2zVhbcE")
+
+
+def test_fetch_video_stats_raises_on_http_error(mock_credentials):
+    """fetch_video_stats() API 请求失败（HTTP 403）时应上抛异常。"""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status.side_effect = req_lib.exceptions.HTTPError("403 Forbidden")
+    with patch("sources.youtube.requests.get", return_value=mock_resp):
+        with pytest.raises(req_lib.exceptions.HTTPError):
+            youtube.fetch_video_stats("https://www.youtube.com/watch?v=1laF2zVhbcE")
+
+
+def test_fetch_video_stats_likecount_none_when_disabled(mock_credentials):
+    """fetch_video_stats() 点赞数被视频创作者禁用时，likeCount 应为 None。"""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {
+        "items": [{"id": "1laF2zVhbcE", "statistics": {"viewCount": "5000000"}}]
+    }
+    mock_resp.raise_for_status = MagicMock()
+    with patch("sources.youtube.requests.get", return_value=mock_resp):
+        result = youtube.fetch_video_stats("https://www.youtube.com/watch?v=1laF2zVhbcE")
+    assert result["likeCount"] is None
+    assert result["viewCount"] == "5000000"
+
+
+def test_fetch_video_stats_invalid_url_raises(mock_credentials):
+    """fetch_video_stats() 传入非 YouTube URL 应在解析阶段抛出 ValueError。"""
+    with pytest.raises(ValueError, match=r"\[youtube\]"):
+        youtube.fetch_video_stats("https://www.bilibili.com/video/BV1xx")
