@@ -234,30 +234,51 @@ class TestFetchSampleVideoPerformances:
 
 
 class TestFetchSampleShopProductPerformance:
-    def test_shop_product_performance_skips_when_no_product_id(self, mock_credentials):
-        """TIKTOK_PRODUCT_ID 未配置时返回空列表，不发起请求。"""
+    def test_shop_product_performance_skips_when_no_product_ids(self, mock_credentials):
+        """商品列表为空时返回空列表。"""
         tiktok._access_token = "test_token"
         tiktok._shop_cipher = "test_cipher"
-        with patch("config.credentials.get_optional_config", return_value=""), \
+        with patch("sources.tiktok._fetch_product_ids", return_value=[]), \
              patch("sources.tiktok.requests.get") as mock_get:
             result = tiktok.fetch_sample("shop_product_performance")
         assert result == []
         mock_get.assert_not_called()
 
     def test_shop_product_performance_success(self, mock_credentials):
-        """TIKTOK_PRODUCT_ID 已配置时调用 API 并返回性能数据。"""
+        """找到有完整数据的产品时返回性能数据。"""
         tiktok._access_token = "test_token"
         tiktok._shop_cipher = "test_cipher"
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "code": 0,
-            "data": {"product_id": "p123", "revenue": "1000.00", "orders": 50},
+        rich_data = {
+            "latest_available_date": "2026-04-07",
+            "performance": {
+                "intervals": [{"start_date": "2026-03-10", "end_date": "2026-04-09",
+                                "sales": {"gmv": {"amount": "1000"}, "orders": 50}}],
+                "ratings": [],
+            },
         }
-        with patch.dict("os.environ", {"TIKTOK_PRODUCT_ID": "p123"}), \
-             patch("sources.tiktok.requests.get", return_value=mock_resp):
+        with patch("sources.tiktok._fetch_product_ids", return_value=["p123", "p456"]), \
+             patch("sources.tiktok._query_product_performance", return_value=rich_data):
             result = tiktok.fetch_sample("shop_product_performance")
         assert isinstance(result, list)
-        assert len(result) > 0
+        assert len(result) == 1
+        assert "sales" in result[0]["performance"]["intervals"][0]
+
+    def test_shop_product_performance_fallback_to_best(self, mock_credentials):
+        """所有产品都没有完整数据时，返回字段最多的结果。"""
+        tiktok._access_token = "test_token"
+        tiktok._shop_cipher = "test_cipher"
+        sparse_data = {
+            "latest_available_date": "2026-04-07",
+            "performance": {
+                "intervals": [{"start_date": "2026-03-10", "end_date": "2026-04-09"}],
+                "ratings": [],
+            },
+        }
+        with patch("sources.tiktok._fetch_product_ids", return_value=["p1"]), \
+             patch("sources.tiktok._query_product_performance", return_value=sparse_data):
+            result = tiktok.fetch_sample("shop_product_performance")
+        assert isinstance(result, list)
+        assert len(result) == 1
 
 
 class TestFetchSampleAffiliateSampleStatus:

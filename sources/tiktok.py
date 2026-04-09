@@ -354,19 +354,28 @@ def _fetch_first_creator_temp_id(app_key: str, app_secret: str) -> Optional[str]
 def _fetch_first_product_id(app_key: str, app_secret: str) -> Optional[str]:
     """从商品列表接口自动获取第一个上架商品的 ID。
 
-    用于 shop_product_performance / affiliate_sample_status /
-    affiliate_campaign_performance 等需要 product_id 的接口。
+    用于 affiliate_sample_status / affiliate_campaign_performance 等需要 product_id 的接口。
     .env 中已配置 TIKTOK_PRODUCT_ID 时优先使用配置值，不再调用此接口。
 
     Returns:
         商品 ID 字符串，或 None（接口异常/无商品时）
+    """
+    ids = _fetch_product_ids(app_key, app_secret, limit=1)
+    return ids[0] if ids else None
+
+
+def _fetch_product_ids(app_key: str, app_secret: str, limit: int = 20) -> List[str]:
+    """从商品列表接口获取多个上架商品 ID。
+
+    Returns:
+        商品 ID 列表，接口异常或无商品时返回空列表。
     """
     path = "/product/202309/products/search"
     sign_params: dict = {
         "app_key": app_key,
         "shop_cipher": _shop_cipher,
         "timestamp": str(int(time.time()) - 60),
-        "page_size": "1",
+        "page_size": str(min(limit, 50)),
     }
     body: dict = {}
     sign_params["sign"] = _sign_request(app_secret, path, sign_params, body)
@@ -383,17 +392,17 @@ def _fetch_first_product_id(app_key: str, app_secret: str) -> Optional[str]:
         data = resp.json()
         if data.get("code") != 0:
             logger.warning(f"[tiktok] 商品列表查询失败：code={data.get('code')} {data.get('message')}")
-            return None
+            return []
         products = (data.get("data") or {}).get("products", [])
         if not products:
             logger.warning("[tiktok] 商品列表为空，无法自动获取 product_id")
-            return None
-        product_id = products[0].get("id")
-        logger.info(f"[tiktok] 自动获取 product_id={product_id}")
-        return product_id
+            return []
+        ids = [p.get("id") for p in products if p.get("id")]
+        logger.info(f"[tiktok] 获取到 {len(ids)} 个商品 ID")
+        return ids
     except Exception as e:
-        logger.warning(f"[tiktok] 自动获取 product_id 失败：{e}")
-        return None
+        logger.warning(f"[tiktok] 自动获取 product_ids 失败：{e}")
+        return []
 
 
 # ---- 各路由私有实现 ----
@@ -552,23 +561,29 @@ def _fetch_video_performances(app_key: str, app_secret: str) -> List[Dict]:
     return [resp_data]
 
 
-def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]:
-    """GET /analytics/202509/shop_products/{product_id}/performance — 店铺商品表现。
+def _has_rich_performance_data(resp_data: Dict) -> bool:
+    """判断 shop_product_performance 返回的数据是否包含完整字段（如 sales、traffic）。
 
-    优先使用 .env 中的 TIKTOK_PRODUCT_ID；未配置时自动从商品列表接口获取第一个商品 ID。
+    如果 intervals 内只有 start_date/end_date 而没有 sales 等字段，
+    说明该产品没有实际销售数据，字段不完整。
     """
-    product_id = _creds_module.get_optional_config("TIKTOK_PRODUCT_ID")
-    if not product_id:
-        logger.info("[tiktok] TIKTOK_PRODUCT_ID 未配置，尝试自动获取商品 ID ...")
-        product_id = _fetch_first_product_id(app_key, app_secret)
-    if not product_id:
-        logger.warning("[tiktok] 无法获取 product_id，shop_product_performance 跳过")
-        return []
+    perf = resp_data.get("performance", {})
+    intervals = perf.get("intervals", [])
+    if not intervals:
+        return False
+    first_interval = intervals[0]
+    # 有 sales 或 traffic 字段就认为数据完整
+    return "sales" in first_interval or "traffic" in first_interval
+
+
+def _query_product_performance(
+    app_key: str, app_secret: str, product_id: str
+) -> Optional[Dict]:
+    """对单个产品查询 performance，返回 resp_data（data 层），失败返回 None。"""
     from datetime import datetime, timedelta
     end_dt = datetime.now()
     start_dt = end_dt - timedelta(days=30)
     path = f"/analytics/202509/shop_products/{product_id}/performance"
-    # start_date_ge / end_date_lt 必须在签名前加入参数，TikTok 要求所有 query param 参与签名
     sign_params: dict = {
         "app_key": app_key,
         "shop_cipher": _shop_cipher,
@@ -577,32 +592,71 @@ def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]
         "end_date_lt": end_dt.strftime("%Y-%m-%d"),
     }
     sign_params["sign"] = _sign_request(app_secret, path, sign_params)
-    params = sign_params
     logger.info(f"[tiktok] 获取店铺商品表现（product_id={product_id}）...")
-    resp = requests.get(
-        f"{BASE_URL}{path}",
-        params=params,
-        headers=_api_headers(),
-        timeout=REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    # DEBUG: 打印原始 API 响应，便于排查字段缺失问题
-    import json as _json
-    logger.info(
-        "[tiktok] shop_product_performance 原始响应:\n%s",
-        _json.dumps(data, indent=2, ensure_ascii=False, default=str),
-    )
-    if data.get("code") != 0:
-        raise RuntimeError(
-            f"[tiktok] 店铺商品表现查询失败，code={data.get('code')}，message={data.get('message')}"
+    try:
+        resp = requests.get(
+            f"{BASE_URL}{path}",
+            params=sign_params,
+            headers=_api_headers(),
+            timeout=REQUEST_TIMEOUT,
         )
-    resp_data = data.get("data") or {}
-    if not resp_data.get("performance"):
-        logger.warning("[tiktok] 店铺商品表现查询返回空，字段发现将跳过")
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning(
+                f"[tiktok] 商品表现查询失败 product_id={product_id}，"
+                f"code={data.get('code')}，message={data.get('message')}"
+            )
+            return None
+        return data.get("data") or {}
+    except Exception as e:
+        logger.warning(f"[tiktok] 商品表现查询异常 product_id={product_id}：{e}")
+        return None
+
+
+def _fetch_shop_product_performance(app_key: str, app_secret: str) -> List[Dict]:
+    """GET /analytics/202509/shop_products/{product_id}/performance — 店铺商品表现。
+
+    自动从商品列表获取多个产品 ID，逐个查询直到找到有完整字段（含 sales/traffic）的产品。
+    如果所有产品都没有完整数据，则返回字段最多的那个结果（确保字段发现尽量全面）。
+    """
+    product_ids = _fetch_product_ids(app_key, app_secret, limit=20)
+    if not product_ids:
+        logger.warning("[tiktok] 无法获取 product_id 列表，shop_product_performance 跳过")
         return []
-    logger.info("[tiktok] 获取店铺商品表现 ... 成功（1 条记录）")
-    return [resp_data]
+
+    best_result: Optional[Dict] = None
+    best_field_count = 0
+
+    for pid in product_ids:
+        resp_data = _query_product_performance(app_key, app_secret, pid)
+        if not resp_data or not resp_data.get("performance"):
+            continue
+
+        # 统计 intervals 内的字段数量
+        intervals = resp_data.get("performance", {}).get("intervals", [])
+        field_count = len(intervals[0]) if intervals else 0
+
+        if _has_rich_performance_data(resp_data):
+            logger.info(
+                f"[tiktok] 找到有完整数据的产品 product_id={pid}（interval 字段数={field_count}）"
+            )
+            return [resp_data]
+
+        # 记录字段最多的结果作为兜底
+        if field_count > best_field_count:
+            best_field_count = field_count
+            best_result = resp_data
+
+    if best_result:
+        logger.warning(
+            f"[tiktok] 未找到有完整 sales/traffic 数据的产品，"
+            f"使用字段最多的结果（字段数={best_field_count}）"
+        )
+        return [best_result]
+
+    logger.warning("[tiktok] 所有产品均无有效表现数据，shop_product_performance 跳过")
+    return []
 
 
 def _fetch_affiliate_sample_status(app_key: str, app_secret: str) -> List[Dict]:
