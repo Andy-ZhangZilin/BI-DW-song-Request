@@ -89,7 +89,7 @@ def authenticate() -> bool:
     browser = None
     with sync_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=False)
             page = browser.new_page()
             _login(page, username, password)
 
@@ -146,7 +146,7 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     browser = None
     with sync_playwright() as p:
         try:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=False)
             page = browser.new_page()
 
             # Step 1: 登录
