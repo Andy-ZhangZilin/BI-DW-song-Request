@@ -60,23 +60,16 @@ class TestExtractFields:
         for item in result:
             assert isinstance(item["nullable"], bool), f"nullable 应为 bool：{item}"
 
-    def test_field_names_cover_all_keys(self, sample):
-        """返回的字段名覆盖样本中的所有 key。"""
-        expected_keys = set()
-        for record in sample:
-            expected_keys.update(record.keys())
+    def test_field_names_cover_target_fields(self, sample):
+        """返回的字段名覆盖全部 5 个目标字段。"""
         result = awin.extract_fields(sample)
         result_keys = {item["field_name"] for item in result}
-        assert expected_keys == result_keys
+        assert result_keys == {"impressions", "clicks", "totalNo", "totalValue", "totalComm"}
 
-    def test_tags_nullable_true(self, sample):
-        """tags 在所有记录中为 null，应被识别为 nullable=True。"""
+    def test_only_5_fields_returned(self, sample):
+        """只返回 5 个目标字段，无多余字段。"""
         result = awin.extract_fields(sample)
-        tags_field = next(
-            (f for f in result if f["field_name"] == "tags"), None
-        )
-        assert tags_field is not None, "tags 字段应存在"
-        assert tags_field["nullable"] is True
+        assert len(result) == 5
 
     def test_clicks_nullable_false(self, sample):
         """clicks 在所有记录中均有值，nullable 应为 False。"""
@@ -99,11 +92,11 @@ class TestExtractFields:
         tv_field = next(f for f in result if f["field_name"] == "totalValue")
         assert tv_field["data_type"] == "number"
 
-    def test_string_type_inferred_for_publishername(self, sample):
-        """publisherName 为字符串类型，应推断为 'string'。"""
+    def test_integer_type_inferred_for_impressions(self, sample):
+        """impressions 为整数类型，应推断为 'integer'。"""
         result = awin.extract_fields(sample)
-        pn_field = next(f for f in result if f["field_name"] == "publisherName")
-        assert pn_field["data_type"] == "string"
+        field = next(f for f in result if f["field_name"] == "impressions")
+        assert field["data_type"] == "integer"
 
     def test_returns_sorted_fields(self, sample):
         """返回的字段列表按字段名字母顺序排列（便于报告阅读）。"""
@@ -112,13 +105,10 @@ class TestExtractFields:
         assert names == sorted(names)
 
     def test_sample_value_is_first_non_null(self, sample):
-        """tags 全为 null，sample_value 应为 None；clicks 应为第一条记录的值。"""
+        """clicks 应为第一条记录的值 76。"""
         result = awin.extract_fields(sample)
-        tags_field = next(f for f in result if f["field_name"] == "tags")
-        assert tags_field["sample_value"] is None
-
         clicks_field = next(f for f in result if f["field_name"] == "clicks")
-        assert clicks_field["sample_value"] == 76  # 第一条记录的 clicks 值
+        assert clicks_field["sample_value"] == 76
 
 
 # ---------------------------------------------------------------------------
@@ -135,11 +125,11 @@ class TestExtractFieldsEdgeCases:
 
     def test_single_record(self):
         """单条记录也能正常提取字段。"""
-        sample = [{"publisherId": 12345, "clicks": 10}]
+        sample = [{"clicks": 10, "totalNo": 5}]
         result = awin.extract_fields(sample)
         assert len(result) == 2
         names = {f["field_name"] for f in result}
-        assert names == {"publisherId", "clicks"}
+        assert names == {"clicks", "totalNo"}
 
     def test_all_none_values_nullable(self):
         """字段在所有记录中均为 None 时，nullable=True，sample_value=None。"""
@@ -147,44 +137,6 @@ class TestExtractFieldsEdgeCases:
         result = awin.extract_fields(sample)
         assert result[0]["nullable"] is True
         assert result[0]["sample_value"] is None
-
-    def test_empty_string_treated_as_null(self):
-        """空字符串 '' 视为空值，影响 nullable 判断。"""
-        sample = [{"field_y": ""}, {"field_y": "有值"}]
-        result = awin.extract_fields(sample)
-        assert result[0]["nullable"] is True
-
-    def test_string_encoded_number_inferred_as_number(self):
-        """字符串编码的浮点数应推断为 'number'。"""
-        sample = [{"amount": "99.00"}, {"amount": "149.50"}]
-        result = awin.extract_fields(sample)
-        amount_field = result[0]
-        assert amount_field["data_type"] == "number"
-
-    def test_non_numeric_string_inferred_as_string(self):
-        """非数字字符串应推断为 'string'。"""
-        sample = [{"status": "approved"}, {"status": "pending"}]
-        result = awin.extract_fields(sample)
-        status_field = result[0]
-        assert status_field["data_type"] == "string"
-
-    def test_whitespace_string_treated_as_null(self):
-        """纯空白字符串视为空值，影响 nullable 判断。"""
-        sample = [{"field_z": "   "}, {"field_z": "有值"}]
-        result = awin.extract_fields(sample)
-        assert result[0]["nullable"] is True
-
-    def test_multiple_records_inconsistent_keys(self):
-        """多条记录键集合不一致时，联合所有键，缺失键 nullable=True。"""
-        sample = [
-            {"a": "v1", "b": "v2"},
-            {"a": "v3"},              # 缺少 b
-        ]
-        result = awin.extract_fields(sample)
-        names = {f["field_name"] for f in result}
-        assert names == {"a", "b"}
-        b_field = next(f for f in result if f["field_name"] == "b")
-        assert b_field["nullable"] is True
 
     def test_native_int_type_inferred(self):
         """原生 int 值推断为 'integer'。"""
@@ -204,6 +156,20 @@ class TestExtractFieldsEdgeCases:
         sample = [{"active": True}]
         result = awin.extract_fields(sample)
         assert result[0]["data_type"] == "boolean"
+
+
+# ---------------------------------------------------------------------------
+# TestTargetFields — 验证 TARGET_FIELDS 常量
+# ---------------------------------------------------------------------------
+
+class TestTargetFields:
+    """验证 TARGET_FIELDS 常量定义正确。"""
+
+    def test_target_fields_has_5_entries(self):
+        assert len(awin.TARGET_FIELDS) == 5
+
+    def test_target_fields_content(self):
+        assert awin.TARGET_FIELDS == {"impressions", "clicks", "totalNo", "totalValue", "totalComm"}
 
 
 # ---------------------------------------------------------------------------

@@ -45,6 +45,9 @@ DEFAULT_DATE_RANGE_DAYS = 7
 # 最大样本行数
 MAX_SAMPLE_ROWS = 20
 
+# Performance Over Time 目标字段（仅保留这些，去掉多余字段）
+TARGET_FIELDS = {"impressions", "clicks", "totalNo", "totalValue", "totalComm"}
+
 
 # ---------------------------------------------------------------------------
 # 公开接口
@@ -150,8 +153,11 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             logger.error(f"[awin] fetch_sample ... 失败：API 返回非列表格式 — {type(sample)}")
             raise RuntimeError("[awin] API 返回格式异常：期望列表")
 
-        # 限制样本行数
-        sample = sample[:MAX_SAMPLE_ROWS]
+        # 限制样本行数，并只保留目标字段
+        sample = [
+            {k: v for k, v in rec.items() if k in TARGET_FIELDS}
+            for rec in sample[:MAX_SAMPLE_ROWS]
+        ]
 
         if not sample:
             logger.warning("[awin] API 返回空数据，返回空样本")
