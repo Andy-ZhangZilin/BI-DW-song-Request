@@ -25,7 +25,7 @@ from typing import Optional
 import requests
 
 from config.credentials import get_credentials, mask_credential
-from reporter import write_raw_report, init_validation_report
+from reporter import write_raw_report
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +72,6 @@ def authenticate() -> bool:
         True  — Token 有效，且关联的 advertiser 账户可访问
         False — Token 无效或网络异常
 
-    Side effects:
-        认证成功后调用 init_validation_report("awin")（仅首次创建模板文件）。
     """
     try:
         creds = get_credentials()
@@ -101,10 +99,6 @@ def authenticate() -> bool:
             )
             if found:
                 logger.info("[awin] 认证 ... 成功")
-                try:
-                    init_validation_report("awin")
-                except OSError as e:
-                    logger.warning(f"[awin] init_validation_report 写入失败（认证已成功）：{e}")
                 return True
             else:
                 logger.error(f"[awin] 认证 ... 失败：advertiserId {advertiser_id} 未在账户列表中找到")

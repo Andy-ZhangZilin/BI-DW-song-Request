@@ -47,10 +47,10 @@ SOURCES: Dict[str, str] = {
 # 私有辅助函数
 # ---------------------------------------------------------------------------
 
-def _run_source(source_name: str, module_path: str, table: Optional[str] = None) -> bool:
-    """执行单个数据源的完整验证流程，返回是否成功。
+def _run_source(source_name: str, module_path: str, table: Optional[str] = None) -> Dict:
+    """执行单个数据源的完整验证流程，返回结果字典。
 
-    流程：authenticate → fetch_sample → extract_fields → write_raw_report → init_validation_report
+    流程：authenticate → fetch_sample → extract_fields → write_raw_report
     triplewhale / tiktok 多表路由：循环执行各张表，后续表追加 Section（append=True）。
 
     Args:
@@ -59,20 +59,34 @@ def _run_source(source_name: str, module_path: str, table: Optional[str] = None)
         table: 可选，指定单张表名；为 None 时执行全部表（仅对多表数据源有效）。
 
     Returns:
-        True 表示全部步骤成功；False 表示认证失败或捕获到异常。
+        {"success": bool, "status": str, "error": str|None, "fields": {table: [field_list]}}
     """
-    module = importlib.import_module(module_path)
+    result: Dict = {"success": False, "status": "未知", "error": None, "fields": {}}
+    try:
+        module = importlib.import_module(module_path)
+    except Exception as import_err:
+        logger.error(f"[{source_name}] 模块加载失败：{type(import_err).__name__}: {import_err}")
+        result["status"] = f"ImportError"
+        result["error"] = str(import_err)
+        return result
     logger.info(f"[{source_name}] 开始验证 ...")
     try:
         ok = module.authenticate()
         if not ok:
             logger.error(f"[{source_name}] 认证 ... 失败")
-            return False
+            result["status"] = "认证失败"
+            result["error"] = "authenticate() 返回 False"
+            return result
         logger.info(f"[{source_name}] 认证 ... 成功")
 
         if source_name == "triplewhale":
             # triplewhale 多表路由：每张表独立抓样本，后续追加 Section
             tables = [table] if table else module.TABLES
+            if not tables:
+                logger.warning(f"[{source_name}] TABLES 为空，跳过")
+                result["status"] = "TABLES 为空"
+                result["error"] = "module.TABLES 为空列表"
+                return result
             for i, table_name in enumerate(tables):
                 logger.info(f"[{source_name}] 获取 {table_name} 样本 ...")
                 sample = module.fetch_sample(table_name)
@@ -80,6 +94,7 @@ def _run_source(source_name: str, module_path: str, table: Optional[str] = None)
                 reporter.write_raw_report(
                     source_name, fields, table_name, len(sample), append=(i > 0)
                 )
+                result["fields"][table_name] = fields
                 logger.info(f"[{source_name}] {table_name} ... 成功")
             # 数据概况探测：各表 MIN + COUNT，写入数据概况区块（AC10）
             logger.info(f"[{source_name}] 探测各表数据概况 ...")
@@ -93,11 +108,15 @@ def _run_source(source_name: str, module_path: str, table: Optional[str] = None)
                         f"[{source_name}] {table_name} 数据概况探测失败，跳过：{profile_err}"
                     )
             reporter.write_triplewhale_data_profile(profiles)
-            reporter.init_validation_report(source_name)
         elif source_name == "tiktok":
             # tiktok 多接口路由：每个接口独立抓样本，后续追加 Section
             # 单表异常不中断整体，记录错误后继续下一张表
             tables = [table] if table else module.TABLES
+            if not tables:
+                logger.warning(f"[{source_name}] TABLES 为空，跳过")
+                result["status"] = "TABLES 为空"
+                result["error"] = "module.TABLES 为空列表"
+                return result
             written = 0
             for table_name in tables:
                 logger.info(f"[{source_name}] 获取 {table_name} 样本 ...")
@@ -107,24 +126,28 @@ def _run_source(source_name: str, module_path: str, table: Optional[str] = None)
                     reporter.write_raw_report(
                         source_name, fields, table_name, len(sample), append=(written > 0)
                     )
+                    result["fields"][table_name] = fields
                     written += 1
                     logger.info(f"[{source_name}] {table_name} ... 完成")
                 except Exception as table_err:
                     logger.error(f"[{source_name}] {table_name} 失败，跳过：{table_err}")
-            reporter.init_validation_report(source_name)
         else:
             logger.info(f"[{source_name}] 获取样本 ...")
             sample = module.fetch_sample()
             fields = module.extract_fields(sample)
             reporter.write_raw_report(source_name, fields, None, len(sample))
-            reporter.init_validation_report(source_name)
+            result["fields"][source_name] = fields
 
         logger.info(f"[{source_name}] 验证完成 ... 成功")
-        return True
+        result["success"] = True
+        result["status"] = "已生成"
+        return result
 
     except Exception as e:
         logger.error(f"[{source_name}] 执行失败：{type(e).__name__}: {e}")
-        return False
+        result["status"] = f"{type(e).__name__}"
+        result["error"] = str(e)
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -217,19 +240,24 @@ def main() -> None:
         sources_to_run = SOURCES
 
     # --- 调度循环 ---
-    results: Dict[str, str] = {}
+    source_results: Dict[str, Dict] = {}
     for source_name, module in sources_to_run.items():
-        success = _run_source(source_name, module, table=args.table)
-        results[source_name] = "成功" if success else "失败"
+        source_results[source_name] = _run_source(source_name, module, table=args.table)
+
+    # --- --all 模式：生成聚合结论文档 ---
+    if args.all:
+        logger.info("生成聚合结论文档 ...")
+        reporter.write_aggregate_report(source_results)
 
     # --- 汇总输出 ---
     logger.info("=" * 50)
     logger.info("验证汇总：")
-    for name, status in results.items():
+    for name, result in source_results.items():
+        status = "成功" if result["success"] else "失败"
         logger.info(f"  {name}: {status}")
     logger.info("=" * 50)
 
-    failed = [name for name, status in results.items() if status != "成功"]
+    failed = [name for name, r in source_results.items() if not r["success"]]
     sys.exit(0 if not failed else 1)
 
 

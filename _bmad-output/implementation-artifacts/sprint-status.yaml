@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-09  # Sprint Change: 新增 Story 3.3 youtube_url + 凭证按源校验
+last_updated: 2026-04-09  # CC#2: 新增 Story 1.5 报告体系重构-聚合文档与AI分析
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -49,6 +49,8 @@ development_status:
   1-2-凭证管理器: done
   1-3-字段需求配置: done
   1-4-报告渲染器: done
+  # CC#2 2026-04-09: 报告体系重构（废弃 validation.md 双文件策略，新增聚合结论文档 + AI 分析提示语）
+  1-5-报告体系重构-聚合文档与AI分析: done
   epic-1-retrospective: optional
 
   # Epic 2: 高优先级 API 数据源接入

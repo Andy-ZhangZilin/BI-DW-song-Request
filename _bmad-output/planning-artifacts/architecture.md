@@ -120,48 +120,56 @@ playwright install chromium  # 必须单独执行
 - 凭证加载方式（影响安全性与可维护性）
 
 **Deferred Decisions（Post-MVP）：**
-- 字段 AI 辅助分析（验证后根据需要引入）
+- （已提前实现）字段 AI 辅助分析 — 聚合文档内嵌 AI 分析提示语，指导 AI 完成字段映射
 
 ### 数据架构
 
-**字段需求 YAML 组织方式：按报表分组**
+**字段需求 YAML 组织方式：按报表分组（reports 列表结构）**
 
 按报表（而非数据源）组织，与《数据表需求》文档结构一一对应：
 
 ```yaml
-# config/field-requirements.yaml
-profit_table:       # 利润表（04-08 截止）
-  - display_name: 日期
-    source: triplewhale
-    table: pixel_orders_table
-  - display_name: 销售额
-    source: triplewhale
-    table: pixel_orders_table
-  - display_name: SKU
-    source: tiktok
-    table: orders
-marketing_table:    # 营销表现表（04-20 截止）
-  - display_name: 曝光量
-    source: triplewhale
-    table: pixel_joined_tvf
+# config/field_requirements.yaml
+reports:
+  - report_name: 利润表
+    dashboard: 销售表现、利润表
+    deadline: "2026-04-08"
+    launch_date: "2026-04-24"
+    notes: 费用科目需要到四级
+    fields:
+      - 日期
+      - 渠道
+      - 店铺
+      - 销售额
+      # ...共 9 个字段
+  - report_name: 营销表现表
+    dashboard: 营销表现表
+    deadline: "2026-04-20"
+    launch_date: "2026-04-24"
+    fields:
+      - 日期
+      - 渠道
+      - 曝光量
+      # ...共 11 个字段
+  # ...共 11 张报表
 ```
 
-- 每条记录包含：`display_name`（中文需求字段名）、`source`（数据源）、`table`（具体表/端点）
-- 不预填 `api_field` — 工具以纯发现模式运行，不做自动中英文映射
+- 每张报表包含：`report_name`（中文报表名）、`fields`（字段名列表，纯字符串）
+- 可选属性：`dashboard`、`deadline`、`launch_date`、`notes`
+- 字段不绑定数据源——由聚合文档的 AI 分析提示语驱动映射
 
-**字段对标模式：纯发现模式 + 双列对照报告**
+**字段对标模式：纯发现模式 + AI 辅助分析**
 
 工具不做字段名匹配，只负责"抓取并展示"：
-- Raw 报告输出实际返回字段完整列表（字段名、类型、示例值）
-- 报告同时展示 YAML 中定义的中文需求字段
-- 人工（或后续 AI 辅助）对照两列做结论判断
-- 无 fuzzy matching，无置信度算法，避免误导
+- Raw 报告仅输出实际返回字段完整列表（字段名、类型、示例值、可空性）
+- 不在 raw 报告中展示需求字段对照（已移除）
+- `--all` 模式生成聚合结论文档，内嵌 AI 分析提示语，由 AI 完成字段映射分析
 
-**报告覆盖策略：双文件**
+**报告覆盖策略：raw + aggregate**
 
 - `reports/{source}-raw.md`：每次运行完全覆盖，记录最新实际字段
-- `reports/{source}-validation.md`：人工维护，记录对标结论，工具不覆盖
-- 职责分离：工具负责发现，人负责判断
+- `reports/all-sources-aggregate.md`：`--all` 模式生成，包含 4 部分（采集状态汇总 + 字段清单汇编 + 报表映射模板 + AI 分析提示语），每次覆盖更新
+- 已废弃：`{source}-validation.md` 双文件策略及 `init_validation_report()` 函数
 
 ### Authentication & Security
 
@@ -277,7 +285,7 @@ def extract_fields(sample: List[dict]) -> List[FieldInfo]
 
 **报告文件命名：**
 - Raw 报告：`reports/{source}-raw.md`（如 `triplewhale-raw.md`）
-- 验证报告：`reports/{source}-validation.md`
+- 聚合文档：`reports/all-sources-aggregate.md`（`--all` 模式生成）
 - source 名与 `sources/` 目录下模块文件名一致（不含 `.py`）
 
 ### Structure Patterns
@@ -361,12 +369,19 @@ logger.error("[tiktok] 认证 ... 失败：Invalid access_token")
 | 字段名 | 类型 | 示例值 | 可空 |
 |--------|------|--------|------|
 | {field_name} | {type} | {sample} | {nullable} |
+```
 
-## 需求字段（待人工对照）
+> 注意：raw 报告仅包含实际返回字段，不再包含"需求字段（待人工对照）"区块。
+> 字段映射分析由 `--all` 模式生成的聚合结论文档（`all-sources-aggregate.md`）中的 AI 分析提示语驱动。
 
-| 需求字段（中文） | 报表 | 对照结果 |
-|----------------|------|---------|
-| {display_name} | {report} | ⬜ 待确认 |
+**聚合结论文档格式（`--all` 模式生成）：**
+
+```markdown
+# 数据源字段验证 — 聚合结论文档
+## Part 1: 数据源采集状态汇总（表格：数据源/状态/错误信息）
+## Part 2: 各数据源实际字段清单汇编
+## Part 3: 11 张报表字段映射模板（字段 × 数据源映射）
+## Part 4: AI 分析提示语（指导 AI 完成字段映射分析）
 ```
 
 ### Process Patterns
@@ -455,7 +470,7 @@ except Exception as e:
 ```
 outdoor-data-validator/
 ├── validate.py                        # 统一入口：CLI 解析 + 调度器（FR1-3）
-├── reporter.py                        # 报告渲染器：raw.md 写入 + validation.md 首次创建（FR21-25）
+├── reporter.py                        # 报告渲染器：raw.md 写入 + aggregate.md 聚合文档生成（FR21-25）
 ├── requirements.txt                   # 依赖声明（FR30）
 ├── .env                               # 凭证文件（不提交 Git）
 ├── .env.example                       # 凭证模板（FR5）
@@ -473,28 +488,25 @@ outdoor-data-validator/
 │   ├── tiktok.py                      # TikTok Shop OAuth+HmacSHA256（FR8）
 │   ├── dingtalk.py                    # 钉钉多维表 Access Token（FR9）
 │   ├── youtube.py                     # YouTube Data API v3（FR7）
-│   ├── awin.py                        # Awin Playwright 爬虫（FR10）
+│   ├── youtube_url.py                 # YouTube URL 解析数据源
+│   ├── awin.py                        # Awin REST API（FR10）
 │   ├── cartsee.py                     # CartSee Playwright 爬虫（FR10）
 │   ├── partnerboost.py                # PartnerBoost Playwright 爬虫（FR10）
-│   └── social_media.py                # 社媒后台 stub（raise NotImplementedError，待凭证就绪）
+│   ├── social_media.py                # Facebook Business Suite Playwright 爬虫
+│   └── youtube_studio.py              # YouTube Studio Playwright 爬虫
 │
 ├── reports/                           # 报告输出目录（FR21-25）
 │   ├── triplewhale-raw.md             # 每次运行覆盖（reporter.py 写入）
-│   ├── triplewhale-validation.md      # 首次由 reporter.py 创建模板，后续不覆盖（人工维护）
 │   ├── tiktok-raw.md
-│   ├── tiktok-validation.md
 │   ├── dingtalk-raw.md
-│   ├── dingtalk-validation.md
 │   ├── youtube-raw.md
-│   ├── youtube-validation.md
+│   ├── youtube_url-raw.md
 │   ├── awin-raw.md
-│   ├── awin-validation.md
 │   ├── cartsee-raw.md
-│   ├── cartsee-validation.md
 │   ├── partnerboost-raw.md
-│   ├── partnerboost-validation.md
 │   ├── social_media-raw.md
-│   └── social_media-validation.md
+│   ├── youtube_studio-raw.md
+│   └── all-sources-aggregate.md       # --all 模式生成的聚合结论文档（覆盖更新）
 │
 └── tests/
     ├── __init__.py
@@ -542,14 +554,16 @@ outdoor-data-validator/
 ```
 validate.py（CLI 解析 + 调度）
   ├─ 启动阶段 → config/credentials.py → get_credentials()（集中校验，缺失则快速失败）
-  ├─ 读取 → config/field_requirements.yaml（字段需求，供 reporter.py 渲染）
+  ├─ 读取 → config/field_requirements.yaml（字段需求，供聚合文档渲染）
   ├─ 调度循环 → sources/{source}.py
   │     authenticate() → bool
   │     fetch_sample(table_name) → List[dict]
   │     extract_fields(sample) → List[FieldInfo]
-  └─ 渲染 → reporter.py
-        write_raw_report()         → reports/{source}-raw.md（每次覆盖）
-        init_validation_report()   → reports/{source}-validation.md（仅首次创建）
+  │     _run_source() 返回 Dict: {success, status, error, fields}
+  ├─ 渲染 → reporter.py
+  │     write_raw_report()         → reports/{source}-raw.md（每次覆盖）
+  └─ --all 模式 → reporter.py
+        write_aggregate_report()   → reports/all-sources-aggregate.md（覆盖更新）
 ```
 
 **凭证隔离边界：**
@@ -583,7 +597,7 @@ validate.py（CLI 解析 + 调度）
 | Playwright 安装 | `README.md` 显式说明 `playwright install chromium` |
 | 验证码中断 | 各爬虫 `fetch_sample()` 检测并 raise RuntimeError |
 | stub 模块 | `social_media.py` 所有函数 raise NotImplementedError |
-| validation.md 保护 | `reporter.py` 用 `Path.exists()` 判断首次创建 |
+| 聚合文档生成 | `reporter.py::write_aggregate_report()` — `--all` 模式覆盖更新 |
 
 ### Integration Points
 
@@ -593,13 +607,13 @@ validate.py（CLI 解析 + 调度）
 CLI 参数（--source / --all）
   → validate.py 解析
   → get_credentials() 校验凭证完整性（启动失败快）
-  → field_requirements.yaml 加载字段需求
   → for each source:
       authenticate() → True/False
       fetch_sample(table_name) → List[dict]（原始记录）
       extract_fields(sample) → List[FieldInfo]（标准字段结构）
       reporter.write_raw_report()（每次覆盖）
-      reporter.init_validation_report()（仅首次）
+      → 收集 source_results: Dict[str, Dict]（成功/失败/字段数据）
+  → if --all: reporter.write_aggregate_report(source_results)
   → 控制台汇总日志 + 退出码
 ```
 
@@ -675,7 +689,7 @@ CLI 参数（--source / --all）
 
 **关键优势：**
 - 插件式架构保证新增数据源零改核心逻辑
-- 双文件报告策略（raw 自动覆盖 + validation 首次创建）保护人工标注成果
+- raw + aggregate 报告策略（raw 自动覆盖 + --all 生成聚合文档含 AI 分析提示语）
 - `get_credentials()` 统一加载层简化测试 mock，patch 路径唯一
 - Enforcement Guidelines + Anti-Patterns 明确列出，确保 AI Agent 实现一致性
 - reporter.py 抽离报告渲染，validate.py 保持单一职责
@@ -692,7 +706,7 @@ CLI 参数（--source / --all）
 - 凭证仅通过 `get_credentials()` 获取，禁止直接调用 `os.getenv()`
 - 日志格式严格遵守 `[{source}] 操作描述 ... 成功/失败`
 - Playwright 使用 `sync_playwright`，禁止 async 版本
-- 报告写入路径固定：raw → `reports/{source}-raw.md`，validation → 首次创建后不覆盖
+- 报告写入路径固定：raw → `reports/{source}-raw.md`，聚合 → `reports/all-sources-aggregate.md`（`--all` 模式覆盖更新）
 - 所有函数必须有类型注解，字符串格式化使用 f-string
 
 **推荐实现顺序：**

@@ -27,7 +27,7 @@ except ImportError:
     PlaywrightTimeoutError = Exception  # type: ignore[assignment,misc]
 
 from config.credentials import get_credentials, mask_credential
-from reporter import write_raw_report, init_validation_report
+from reporter import write_raw_report
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,6 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             fields = extract_fields(sample)
             try:
                 write_raw_report("youtube_studio", fields, None, len(sample))
-                init_validation_report("youtube_studio")
             except OSError as e:
                 logger.error(f"[youtube_studio] write_raw_report 写入失败：{e}")
                 raise RuntimeError(f"[youtube_studio] 报告写入失败：{e}") from e

@@ -2,10 +2,7 @@
 tests/test_field_requirements.py
 
 验证 config/field_requirements.yaml 可正确加载且符合预期数据结构。
-测试覆盖 Story 1.3 的全部验收标准（AC1~AC4）。
-
-运行方式（在项目根目录执行）：
-    pytest tests/test_field_requirements.py -v
+适配新结构：顶层 reports 列表，每项含 report_name / fields 等。
 """
 import yaml
 from pathlib import Path
@@ -28,105 +25,78 @@ def test_yaml_loads_successfully():
     """YAML 文件可正常加载，返回非空字典。"""
     data = _load()
     assert isinstance(data, dict), "yaml.safe_load 应返回 dict"
-    assert len(data) > 0, "配置文件不应为空"
+    assert "reports" in data, "顶层应包含 reports 键"
 
 
-def test_required_report_groups_exist():
-    """profit_table 和 marketing_table 两个分组必须存在（AC1）。"""
+def test_reports_is_list():
+    """reports 值应为列表。"""
     data = _load()
-    assert "profit_table" in data, "缺少 profit_table 分组"
-    assert "marketing_table" in data, "缺少 marketing_table 分组"
+    assert isinstance(data["reports"], list)
+    assert len(data["reports"]) > 0
 
 
-def test_each_entry_has_required_fields():
-    """每条记录必须含 display_name 和 source；table 为可选字段（AC1）。"""
+def test_has_11_reports():
+    """应定义 11 张报表。"""
     data = _load()
-    for group_name, entries in data.items():
-        assert entries is not None, f"{group_name} 的值不应为 None（空分组需写 []）"
-        assert isinstance(entries, list), f"{group_name} 的值应为列表"
-        for entry in entries:
-            assert "display_name" in entry, (
-                f"{group_name} 中存在缺少 display_name 的条目：{entry}"
-            )
-            assert "source" in entry, (
-                f"{group_name} 中存在缺少 source 的条目：{entry}"
-            )
-            # table 是可选字段：存在时可以为 str 或 None
+    assert len(data["reports"]) == 11, f"应有 11 张报表，实际 {len(data['reports'])} 张"
+
+
+def test_each_report_has_required_keys():
+    """每张报表必须含 report_name 和 fields。"""
+    data = _load()
+    for i, report in enumerate(data["reports"]):
+        assert "report_name" in report, f"报表 {i} 缺少 report_name"
+        assert "fields" in report, f"报表 {i} ({report.get('report_name', '?')}) 缺少 fields"
+        assert isinstance(report["fields"], list), \
+            f"报表 {report['report_name']} 的 fields 应为列表"
+        assert len(report["fields"]) > 0, \
+            f"报表 {report['report_name']} 的 fields 不应为空"
 
 
 # ---------------------------------------------------------------------------
-# AC4 — 初始内容完整
+# 具体报表验证
 # ---------------------------------------------------------------------------
 
-def test_profit_table_has_minimum_entries():
-    """profit_table 至少 3 条条目（AC4）。"""
+def test_profit_table_exists():
+    """利润表应存在且字段数 >= 9。"""
     data = _load()
-    assert len(data["profit_table"]) >= 3, (
-        f"profit_table 应至少 3 条，实际 {len(data['profit_table'])} 条"
-    )
+    profit = [r for r in data["reports"] if r["report_name"] == "利润表"]
+    assert len(profit) == 1, "应有且仅有一张利润表"
+    assert len(profit[0]["fields"]) >= 9
 
 
-def test_profit_table_covers_multiple_sources():
-    """profit_table 应覆盖 triplewhale 和 tiktok 两个数据源（AC4）。"""
+def test_marketing_table_exists():
+    """营销表现表应存在且字段数 >= 11。"""
     data = _load()
-    sources = {entry["source"] for entry in data["profit_table"]}
-    assert "triplewhale" in sources, "profit_table 应包含 triplewhale 数据源"
-    assert "tiktok" in sources, "profit_table 应包含 tiktok 数据源"
+    marketing = [r for r in data["reports"] if r["report_name"] == "营销表现表"]
+    assert len(marketing) == 1
+    assert len(marketing[0]["fields"]) >= 11
 
 
-# ---------------------------------------------------------------------------
-# AC3 — 非 SQL 数据源 table 字段可选
-# ---------------------------------------------------------------------------
-
-def test_non_sql_source_table_optional():
-    """非 SQL 数据源（youtube）的 table 字段为 None 或缺省，加载不报错（AC3）。"""
+def test_report_names_unique():
+    """报表名称应唯一。"""
     data = _load()
-    youtube_entries = [
-        entry
-        for entries in data.values()
-        for entry in entries
-        if entry.get("source") == "youtube"
-    ]
-    assert len(youtube_entries) > 0, "配置中应包含至少一条 youtube 数据源条目"
-    for entry in youtube_entries:
-        table_value = entry.get("table")
-        assert table_value is None or isinstance(table_value, str), (
-            f"youtube 条目的 table 应为 None 或 str，实际为：{type(table_value)}"
-        )
+    names = [r["report_name"] for r in data["reports"]]
+    assert len(names) == len(set(names)), f"存在重复报表名称：{names}"
 
 
-def test_null_table_entries_load_without_error():
-    """含 table: null 的条目使用 yaml.safe_load 加载后不抛异常（AC3）。"""
+def test_fields_are_strings():
+    """所有字段名应为字符串。"""
     data = _load()
-    # 收集所有 table 为 None 的条目
-    null_table_entries = [
-        entry
-        for entries in data.values()
-        for entry in entries
-        if entry.get("table") is None
-    ]
-    # 只要加载成功、条目结构完整即可
-    for entry in null_table_entries:
-        assert "display_name" in entry
-        assert "source" in entry
+    for report in data["reports"]:
+        for field in report["fields"]:
+            assert isinstance(field, str), \
+                f"报表 {report['report_name']} 的字段 {field} 应为字符串"
 
 
 # ---------------------------------------------------------------------------
-# AC2 — 热更新验证（结构层面）
+# AC2 — 热更新验证
 # ---------------------------------------------------------------------------
 
 def test_yaml_structure_supports_hot_update():
-    """
-    YAML 顶层为字典、值为列表结构，天然支持热更新：
-    新增条目只需编辑 YAML，无需修改 Python 代码（AC2）。
-    """
+    """YAML 结构支持热更新：新增报表只需编辑 YAML，无需修改 Python 代码。"""
     data = _load()
-    for group_name, entries in data.items():
-        assert entries is not None, f"{group_name} 的值不应为 None（空分组需写 []）"
-        assert isinstance(entries, list), (
-            f"{group_name} 的值应为列表，以支持任意新增条目"
-        )
-        for entry in entries:
-            assert isinstance(entry, dict), (
-                f"{group_name} 中的条目应为字典，实际为：{type(entry)}"
-            )
+    assert isinstance(data["reports"], list), "reports 应为列表结构以支持新增"
+    for report in data["reports"]:
+        assert isinstance(report, dict)
+        assert isinstance(report.get("fields", []), list)

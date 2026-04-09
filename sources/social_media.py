@@ -30,7 +30,7 @@ except ImportError:
     PlaywrightTimeoutError = Exception  # type: ignore[assignment,misc]
 
 from config.credentials import get_credentials, mask_credential
-from reporter import write_raw_report, init_validation_report
+from reporter import write_raw_report
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +142,6 @@ def authenticate() -> bool:
         True  — 登录成功
         False — 凭证无效或页面异常
 
-    Side effects:
-        登录成功后调用 init_validation_report("social_media")（仅首次创建模板文件）。
     """
     try:
         creds = get_credentials()
@@ -168,10 +166,6 @@ def authenticate() -> bool:
                 logger.info("[social_media] 尝试复用已保存的 session")
                 if _try_session(page):
                     logger.info("[social_media] 认证 ... 成功（复用 session）")
-                    try:
-                        init_validation_report("social_media")
-                    except OSError as e:
-                        logger.warning(f"[social_media] init_validation_report 写入失败（登录已成功）：{e}")
                     return True
                 logger.info("[social_media] session 已过期，重新登录")
 
@@ -179,10 +173,6 @@ def authenticate() -> bool:
             _save_session(context)
 
             logger.info("[social_media] 认证 ... 成功")
-            try:
-                init_validation_report("social_media")
-            except OSError as e:
-                logger.warning(f"[social_media] init_validation_report 写入失败（登录已成功）：{e}")
             return True
 
         except PlaywrightTimeoutError as e:
@@ -272,7 +262,6 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             fields = extract_fields(sample)
             try:
                 write_raw_report("social_media", fields, None, len(sample))
-                init_validation_report("social_media")
             except OSError as e:
                 logger.error(f"[social_media] write_raw_report 写入失败：{e}")
                 raise RuntimeError(f"[social_media] 报告写入失败：{e}") from e

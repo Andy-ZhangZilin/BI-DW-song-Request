@@ -118,3 +118,8 @@
 - Fixture 有 2 条记录但运行时 `_extract_analytics_metrics` 固定返回 1 条，nullable 相关测试覆盖的场景在生产中不会出现 [tests/test_youtube_studio.py] — 测试设计优化，不影响功能正确性
 - `test_credentials.py::test_all_13_keys_present_in_result` 方法名中的 "13" 已过时（现为 16 个键）[tests/test_credentials.py] — 预存问题，方法体使用动态 `_REQUIRED_KEYS` 所以断言正确
 - `_login()` post-login URL 检查仅覆盖 `accounts.google.com` 和 `signin`，不覆盖 Google 其他中间域名 [sources/youtube_studio.py:307] — 需整体 Google 登录流优化，与 social_media.py 同模式
+
+## Deferred from: code review of 1-5-报告体系重构-聚合文档与AI分析 (2026-04-09)
+
+- `_escape_cell` 未转义 Markdown 强调字符 (`*`, `_`, `` ` ``) [reporter.py:53] — 预存行为，Story 1-4 以来未处理；API 返回值含这些字符时报告渲染会异常
+- tiktok 单表异常时 `result["success"]` 仍为 True — 部分成功未标识 [validate.py:116-117] — 预存设计，tiktok 多接口路由的容错策略，需产品决策是否区分部分成功

@@ -1,94 +1,215 @@
 # config/field_requirements.yaml
-# 字段需求配置 — 按报表分组，每条记录含三个字段：
-#   display_name: 中文需求字段名（唯一显示标识）
-#   source:       数据源名称（对应 sources/ 目录下模块文件名，不含 .py）
-#   table:        表/端点名称（非 SQL 数据源可为 null 或省略此键）
+# 11 张数据表需求定义 — 用于聚合结论文档的 AI 分析提示语生成
 #
-# 说明：
-#   - 此文件是纯配置，修改后无需改动任何 Python 代码
-#   - reporter.py 读取本文件渲染"需求字段（待人工对照）"区块
-#   - 不填写 api_field，工具以纯发现模式运行，字段对照由人工完成
+# 结构说明：
+#   report_name: 报表中文名称
+#   dashboard:   所属报表/仪表盘
+#   deadline:    需求时间
+#   launch_date: 报表上线时间
+#   notes:       业务备注
+#   fields:      字段列表（报表需要的列名）
+#
+# 此文件是纯配置，修改后无需改动任何 Python 代码。
+# reporter.py 读取本文件生成聚合文档中的 11 张报表字段映射模板和 AI 分析提示语。
 
-# -----------------------------------------------------------------------
-# 利润表（profit_table）
-# 对应《数据表需求》文档"利润表"，截止日期 04-08
-# -----------------------------------------------------------------------
-profit_table:
-  - display_name: 日期
-    source: triplewhale
-    table: pixel_orders_table
+reports:
+  - report_name: 利润表
+    dashboard: 销售表现、利润表
+    deadline: "2026-04-08"
+    launch_date: "2026-04-24"
+    notes: 销量、订单量、收入、成本、费用的数据来源；费用科目需要到四级
+    fields:
+      - 日期
+      - 渠道
+      - 店铺
+      - 国家
+      - ASIN/sku_id
+      - MSKU
+      - SKU
+      - 科目
+      - 数值
 
-  - display_name: 销售额
-    source: triplewhale
-    table: pixel_orders_table
+  - report_name: 财务科目表
+    dashboard: 销售表现、利润表
+    deadline: "2026-04-08"
+    launch_date: "2026-04-24"
+    notes: 财务科目级别关系主数据，可能需要财务提供（更新较少，变动需手动更新）
+    fields:
+      - 项ID
+      - 科目名称
+      - 科目级别
+      - 一级科目
+      - 二级科目
+      - 三级科目
+      - 四级科目
+      - 说明/备注
 
-  - display_name: 订单量
-    source: triplewhale
-    table: pixel_orders_table
+  - report_name: 营销表现表
+    dashboard: 营销推广-渠道效果
+    deadline: "2026-04-20"
+    launch_date: "2026-05-18"
+    notes: 营销归因数据，需要按营销的归因逻辑进行归因处理
+    fields:
+      - 日期
+      - 店铺
+      - 推广渠道
+      - 推广渠道细分类
+      - 曝光量
+      - 流量
+      - 订单量
+      - 销量
+      - 销售额
+      - 花费
+      - 新客数
 
-  - display_name: SKU
-    source: tiktok
-    table: orders
+  - report_name: DTC广告投放数据
+    dashboard: 营销推广-广告投放
+    deadline: "2026-05-10"
+    launch_date: "2026-06-03"
+    notes: TW可获取；活动/广告组/广告需含 id/名称
+    fields:
+      - 日期
+      - 店铺名称
+      - 推广渠道
+      - 推广渠道细分类
+      - 活动
+      - 广告组
+      - 广告
+      - 曝光量
+      - 流量
+      - 订单量
+      - 销量
+      - 销售额
+      - 花费
+      - 新客数
 
-  - display_name: TikTok 销售额
-    source: tiktok
-    table: orders
+  - report_name: KOL信息表
+    dashboard: 营销推广-KOL效果
+    deadline: "2026-05-15"
+    launch_date: "2026-06-12"
+    notes: 钉钉多维表数据源
+    fields:
+      - 红人ID
+      - 红人类型
+      - 合作平台
+      - 跟进人
+      - 主页链接
+      - 所在州
+      - 粉丝数
+      - 均播
+      - 红人等级
+      - 合作模式
+      - 付费模式
+      - 合作价格及交付项
+      - 佣金率
+      - 合作review
+      - 后续动作
+      - Code
+      - UTM长链
+      - UTM短链
+      - 原UTM
+      - Email
 
-# -----------------------------------------------------------------------
-# 营销表现表（marketing_table）
-# 对应《数据表需求》文档"营销表现表"，截止日期 04-20
-# -----------------------------------------------------------------------
-marketing_table:
-  - display_name: 曝光量
-    source: triplewhale
-    table: pixel_joined_tvf
+  - report_name: KOL内容表现表
+    dashboard: 营销推广-KOL效果
+    deadline: "2026-05-15"
+    launch_date: "2026-06-12"
+    notes: YouTube等平台内容表现数据
+    fields:
+      - 内容发布id
+      - 内容发布url
+      - 日期
+      - 播放
+      - 点赞数
+      - 评论数
+      - GMV
+      - 新客数
 
-  - display_name: 点击量
-    source: triplewhale
-    table: pixel_joined_tvf
+  - report_name: KOL/达人合作效果表
+    dashboard: 营销推广-KOL效果、营销推广-TikTok销售
+    deadline: "2026-05-25"
+    launch_date: "2026-06-12"
+    notes: KOL、达人寄样成本、合作费用、佣金以及产出；样品费=采购+头程+尾程
+    fields:
+      - 寄样单号
+      - 合作状态
+      - 红人ID/达人ID
+      - 寄样时间
+      - 寄样产品SKU
+      - 样品费
+      - 合作费
+      - 佣金
+      - 合作视频/素材
+      - 曝光量
+      - 流量
+      - 订单数
+      - 销量
+      - 销售额
+      - 新客数
 
-  - display_name: 广告花费
-    source: triplewhale
-    table: pixel_joined_tvf
+  - report_name: TikTok销售分类表
+    dashboard: 营销推广-TikTok销售
+    deadline: "2026-06-05"
+    launch_date: "2026-06-19"
+    notes: 区分视频、直播、商品卡；TikTok接口
+    fields:
+      - 店铺
+      - 日期
+      - sku
+      - 订单类型
+      - 账号
+      - 视频id
+      - 达人
+      - 订单数
+      - 销量
+      - 销售额
+      - 新客数
 
-  - display_name: ROAS
-    source: triplewhale
-    table: pixel_joined_tvf
+  - report_name: 产品营销表现表
+    dashboard: 营销推广-产品级明细
+    deadline: "2026-06-10"
+    launch_date: "2026-06-30"
+    notes: 产品级营销及产出数据（若可能，需要做到渠道级）
+    fields:
+      - 日期
+      - 店铺
+      - SKU/SPU
+      - 推广渠道
+      - 推广渠道细分类
+      - 曝光量
+      - 流量
+      - 订单量
+      - 销量
+      - 销售额
+      - 新客订单
+      - 新客销量
+      - 新客销售额
+      - 新客数
 
-# -----------------------------------------------------------------------
-# YouTube 内容表（youtube_table）
-# 非 SQL 数据源，table 字段为 null（PyYAML 加载后值为 None，视为可选）
-# -----------------------------------------------------------------------
-youtube_table:
-  - display_name: 视频标题
-    source: youtube
-    table: null
+  - report_name: 社媒账号信息
+    dashboard: ""
+    deadline: "非一期需求"
+    launch_date: "2026-05-18"
+    notes: youtube、Instagram、TikTok、Facebook 账号的粉丝、曝光、点赞、评论、转发；可能需要抓取或接入平台接口
+    fields:
+      - 平台
+      - 账号
+      - 日期
+      - 粉丝量
+      - 帖子数
 
-  - display_name: 观看次数
-    source: youtube
-    table: null
-
-  - display_name: 点赞数
-    source: youtube
-    table: null
-
-# -----------------------------------------------------------------------
-# 营销投放表（marketing_performance_table）
-# 钉钉多维表数据源，table 为 null（非 SQL 数据源）
-# -----------------------------------------------------------------------
-marketing_performance_table:
-  - display_name: 营销日期
-    source: dingtalk
-    table: null
-
-  - display_name: 营销投入
-    source: dingtalk
-    table: null
-
-  - display_name: 渠道名称
-    source: dingtalk
-    table: null
-
-  - display_name: 转化数
-    source: dingtalk
-    table: null
+  - report_name: 社媒发布内容信息
+    dashboard: ""
+    deadline: "非一期需求"
+    launch_date: "2026-05-18"
+    notes: 可能需要抓取，或接入平台接口
+    fields:
+      - 平台
+      - 账号
+      - 内容ID
+      - 内容
+      - 日期
+      - 观看数
+      - 点赞数
+      - 评论数
+      - 转发数

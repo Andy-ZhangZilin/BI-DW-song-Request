@@ -116,10 +116,10 @@ class TestModuleImports:
         assert hasattr(reporter, "write_raw_report")
         assert callable(reporter.write_raw_report)
 
-    def test_reporter_has_init_validation_report(self):
+    def test_reporter_has_write_aggregate_report(self):
         import reporter
-        assert hasattr(reporter, "init_validation_report")
-        assert callable(reporter.init_validation_report)
+        assert hasattr(reporter, "write_aggregate_report")
+        assert callable(reporter.write_aggregate_report)
 
 
 class TestValidateCLI:
