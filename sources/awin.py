@@ -48,12 +48,17 @@ MAX_SAMPLE_ROWS = 20
 # Performance Over Time 原始字段（从 API 直接获取）
 RAW_FIELDS = {"impressions", "clicks", "totalNo", "totalValue", "totalComm"}
 
-# Performance Over Time 计算字段映射（字段名 -> 对应维度名）
-# Conversion Rate = totalNo / clicks
-# AOV = totalValue / totalNo
-# CPA = totalComm / totalNo
-# CPC = totalComm / clicks
-# ROI = totalValue / totalComm
+# 计算字段集合
+CALCULATED_FIELDS = {"conversionRate", "aov", "cpa", "cpc", "roi"}
+
+# 计算字段公式说明
+CALCULATED_FORMULAS = {
+    "conversionRate": "totalNo / clicks",
+    "aov": "totalValue / totalNo",
+    "cpa": "totalComm / totalNo",
+    "cpc": "totalComm / clicks",
+    "roi": "totalValue / totalComm",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -220,11 +225,20 @@ def extract_fields(sample: list[dict]) -> list[dict]:
         nullable = any(_is_empty(v) for v in values)
         data_type = _infer_type(sample_value)
 
+        # 标注数据来源
+        if key in CALCULATED_FIELDS:
+            source_label = f"计算：{CALCULATED_FORMULAS.get(key, '')}"
+        elif key in RAW_FIELDS:
+            source_label = "API 直接"
+        else:
+            source_label = ""
+
         fields.append({
             "field_name": key,
             "data_type": data_type,
             "sample_value": sample_value,
             "nullable": nullable,
+            "source_label": source_label,
         })
 
     return fields

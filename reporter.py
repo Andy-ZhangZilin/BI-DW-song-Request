@@ -74,15 +74,38 @@ def _escape_cell(value: object) -> str:
     return str(value).replace("\n", " ").replace("\r", "").replace("|", "\\|")
 
 
+def _has_source_label(fields: List[Dict]) -> bool:
+    """检查是否有任何字段包含 source_label 信息。"""
+    return any(field.get("source_label") for field in fields)
+
+
+def _render_field_table_header(has_source: bool) -> List[str]:
+    """渲染字段表格表头。"""
+    if has_source:
+        return [
+            "| 字段名 | 类型 | 示例值 | 可空 | 来源 |",
+            "|--------|------|--------|------|------|",
+        ]
+    return [
+        "| 字段名 | 类型 | 示例值 | 可空 |",
+        "|--------|------|--------|------|",
+    ]
+
+
 def _render_field_table(fields: List[Dict]) -> List[str]:
     """渲染字段表格行（不含表头）。"""
+    has_source = _has_source_label(fields)
     lines: List[str] = []
     for field in fields:
         field_name = _escape_cell(field.get("field_name", ""))
         data_type = _escape_cell(field.get("data_type", ""))
         sample_value = _escape_cell(field.get("sample_value"))
         nullable = "是" if field.get("nullable") else "否"
-        lines.append(f"| {field_name} | {data_type} | {sample_value} | {nullable} |")
+        if has_source:
+            source_label = _escape_cell(field.get("source_label", ""))
+            lines.append(f"| {field_name} | {data_type} | {sample_value} | {nullable} | {source_label} |")
+        else:
+            lines.append(f"| {field_name} | {data_type} | {sample_value} | {nullable} |")
     return lines
 
 
@@ -113,9 +136,8 @@ def _render_raw_report(
         "",
         f"**样本记录数：** {sample_count}",
         "",
-        "| 字段名 | 类型 | 示例值 | 可空 |",
-        "|--------|------|--------|------|",
     ]
+    lines += _render_field_table_header(_has_source_label(fields))
     lines += _render_field_table(fields)
 
     # --- 需求字段区块 ---
@@ -157,9 +179,8 @@ def _render_raw_section(
         "",
         f"**样本记录数：** {sample_count}",
         "",
-        "| 字段名 | 类型 | 示例值 | 可空 |",
-        "|--------|------|--------|------|",
     ]
+    lines += _render_field_table_header(_has_source_label(fields))
     lines += _render_field_table(fields)
     lines.append("")
     return "\n".join(lines)
