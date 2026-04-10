@@ -5,17 +5,18 @@
   2. 用 dtc_access_token 调用 DTC getTiktokShopSecret → TikTok access_token + cipher
   3. 用 TikTok access_token + cipher 调用 TikTok Open API
 
-fetch_sample(table_name) 路由表（共 7 个，6 个有效接口 + 1 个暂无）：
-  shop_product_performance       → GET  /analytics/202509/shop_products/{product_id}/performance
-  affiliate_creator_orders       → POST /affiliate_creator/202410/orders/search
-  video_performances             → GET  /analytics/202403/videos/performances
-  ad_spend                       → 暂无对应 Shop API，返回空列表
-  return_refund                  → POST /return_refund/202602/returns/search
-  affiliate_sample_status        → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
-                                        products/{product_id}/creator/{creator_temp_id}/
-                                        content/statistics/sample/status
-  affiliate_campaign_performance → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
-                                        products/{product_id}/performance
+fetch_sample(table_name) 路由表（共 8 个，7 个有效接口 + 1 个暂无）：
+  shop_product_performance        → GET  /analytics/202509/shop_products/{product_id}/performance
+  affiliate_creator_orders        → POST /affiliate_creator/202410/orders/search
+  video_performances              → GET  /analytics/202509/shop_videos/performance
+  ad_spend                        → 暂无对应 Shop API，返回空列表
+  return_refund                   → POST /return_refund/202602/returns/search
+  affiliate_sample_status         → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
+                                         products/{product_id}/creator/{creator_temp_id}/
+                                         content/statistics/sample/status
+  affiliate_campaign_performance  → GET  /affiliate_partner/202508/campaigns/{campaign_id}/
+                                         products/{product_id}/performance
+  shop_video_performance_detail   → GET  /analytics/202509/shop_videos/{video_id}/performance
 
 含动态路径参数的接口会优先读取 .env 中的配置，未配置时按以下规则自动获取：
   TIKTOK_PRODUCT_ID      — 商品 ID（可选，未配置时从 /product/202309/products/search 自动获取）
@@ -23,6 +24,8 @@ fetch_sample(table_name) 路由表（共 7 个，6 个有效接口 + 1 个暂无
                             + /affiliate_partner/202405/campaigns 两步自动获取）
   TIKTOK_CREATOR_TEMP_ID — 达人临时 ID（可选，未配置时从 /affiliate_creator/202410/orders/search
                             返回的第一条订单中自动获取）
+  TIKTOK_VIDEO_ID        — 视频 ID（可选，未配置时从 /analytics/202509/shop_videos/performance
+                            列表中自动获取第一个有数据的视频 ID）
 """
 import hashlib
 import hmac
@@ -48,7 +51,7 @@ _DTC_APP_SECRET = "CBW3rpFfeobg85uu"
 # HTTP 超时（架构规范：30s）
 REQUEST_TIMEOUT = 30
 
-# 支持的数据表名列表（7 个路由，6 个有效接口 + 1 个暂无的广告花费）
+# 支持的数据表名列表（8 个路由，7 个有效接口 + 1 个暂无的广告花费）
 TABLES: List[str] = [
     "shop_product_performance",
     "affiliate_creator_orders",
@@ -57,6 +60,7 @@ TABLES: List[str] = [
     "return_refund",
     "affiliate_sample_status",
     "affiliate_campaign_performance",
+    "shop_video_performance_detail",
 ]
 
 # 默认表（fetch_sample(None) 时使用）
@@ -67,6 +71,8 @@ _access_token: Optional[str] = None
 _shop_cipher: Optional[str] = None
 # 所有店铺列表，每项含 access_token / cipher / shop_name，authenticate() 时填充
 _all_shops: List[Dict] = []
+# 视频 ID 缓存列表（由 _fetch_video_performances 填充，供 shop_video_performance_detail 复用）
+_cached_video_ids: List[str] = []
 
 
 # ---- 私有函数 ----
@@ -405,6 +411,64 @@ def _fetch_product_ids(app_key: str, app_secret: str, limit: int = 20) -> List[s
         return []
 
 
+def _fetch_video_ids(app_key: str, app_secret: str, limit: int = 10) -> List[str]:
+    """获取 video_id 列表，供 shop_video_performance_detail 轮询使用。
+
+    优先返回 _cached_video_ids（由 _fetch_video_performances 运行后填充），
+    避免重复请求列表接口。缓存为空时主动调用列表接口获取。
+
+    Args:
+        limit: 主动调用列表接口时的 page_size，默认 10。
+
+    Returns:
+        video_id 字符串列表，接口异常或无数据时返回空列表。
+    """
+    if _cached_video_ids:
+        logger.info(f"[tiktok] 复用缓存 video_id 列表（共 {len(_cached_video_ids)} 个）")
+        return _cached_video_ids
+
+    # 缓存为空（单独运行 shop_video_performance_detail 时），主动调用列表接口
+    logger.info("[tiktok] video_id 缓存为空，主动从视频列表接口获取 ...")
+    from datetime import datetime, timedelta
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=30)
+    path = "/analytics/202509/shop_videos/performance"
+    sign_params: dict = {
+        "app_key": app_key,
+        "shop_cipher": _shop_cipher,
+        "timestamp": str(int(time.time()) - 60),
+        "start_date_ge": start_dt.strftime("%Y-%m-%d"),
+        "end_date_lt": end_dt.strftime("%Y-%m-%d"),
+        "page_size": str(limit),
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params)
+    try:
+        resp = requests.get(
+            f"{BASE_URL}{path}",
+            params=sign_params,
+            headers=_api_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning(
+                f"[tiktok] 视频列表查询失败（获取 video_ids）："
+                f"code={data.get('code')} {data.get('message')}"
+            )
+            return []
+        videos = (data.get("data") or {}).get("videos", [])
+        if not videos:
+            logger.warning("[tiktok] 视频列表为空，无法自动获取 video_id")
+            return []
+        ids = [v.get("id") for v in videos if v.get("id")]
+        logger.info(f"[tiktok] 从视频列表获取到 {len(ids)} 个 video_id")
+        return ids
+    except Exception as e:
+        logger.warning(f"[tiktok] 自动获取 video_ids 失败：{e}")
+        return []
+
+
 # ---- 各路由私有实现 ----
 
 def _fetch_return_refund_for_shop(
@@ -557,6 +621,12 @@ def _fetch_video_performances(app_key: str, app_secret: str) -> List[Dict]:
     if not resp_data.get("videos") and not resp_data.get("total_count"):
         logger.warning("[tiktok] 视频表现查询返回空，字段发现将跳过")
         return []
+    # 缓存 video_id 列表供 shop_video_performance_detail 复用，避免重复请求列表接口
+    global _cached_video_ids
+    ids = [v.get("id") for v in (resp_data.get("videos") or []) if v.get("id")]
+    if ids:
+        _cached_video_ids = ids
+        logger.info(f"[tiktok] 缓存 {len(ids)} 个 video_id 供后续接口复用")
     logger.info(f"[tiktok] 获取视频表现样本 ... 成功（total_count={resp_data.get('total_count')}）")
     return [resp_data]
 
@@ -775,6 +845,81 @@ def _fetch_affiliate_campaign_performance(app_key: str, app_secret: str) -> List
     return records
 
 
+def _query_video_performance_detail(
+    app_key: str, app_secret: str, video_id: str
+) -> Optional[Dict]:
+    """对单个视频查询 performance detail，返回 resp_data（data 层），失败返回 None。"""
+    from datetime import datetime, timedelta
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=30)
+    path = f"/analytics/202509/shop_videos/{video_id}/performance"
+    sign_params: dict = {
+        "app_key": app_key,
+        "shop_cipher": _shop_cipher,
+        "timestamp": str(int(time.time()) - 60),
+        "start_date_ge": start_dt.strftime("%Y-%m-%d"),
+        "end_date_lt": end_dt.strftime("%Y-%m-%d"),
+    }
+    sign_params["sign"] = _sign_request(app_secret, path, sign_params)
+    logger.info(f"[tiktok] 获取单视频详细表现（video_id={video_id}）...")
+    try:
+        resp = requests.get(
+            f"{BASE_URL}{path}",
+            params=sign_params,
+            headers=_api_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning(
+                f"[tiktok] 视频详情查询失败 video_id={video_id}，"
+                f"code={data.get('code')}，message={data.get('message')}"
+            )
+            return None
+        return data.get("data") or {}
+    except Exception as e:
+        logger.warning(f"[tiktok] 视频详情查询异常 video_id={video_id}：{e}")
+        return None
+
+
+def _fetch_shop_video_performance_detail(app_key: str, app_secret: str) -> List[Dict]:
+    """GET /analytics/202509/shop_videos/{video_id}/performance — 单视频详细表现数据。
+
+    与 video_performances（店铺视频列表）不同，此接口针对单个视频返回更详细的
+    时间维度表现数据（按日/周/月分段）。
+
+    video_id 优先读 .env TIKTOK_VIDEO_ID（单个固定值）；未配置时从 _fetch_video_ids()
+    获取多个候选 ID（优先复用 video_performances 缓存，避免重复请求），逐个尝试直到
+    找到有数据的视频。
+
+    Required scope: data.shop_analytics.public.read（与 shop_product_performance 相同）
+    """
+    fixed_id = _creds_module.get_optional_config("TIKTOK_VIDEO_ID")
+    if fixed_id:
+        resp_data = _query_video_performance_detail(app_key, app_secret, fixed_id)
+        if resp_data:
+            logger.info(f"[tiktok] 获取单视频详细表现 ... 成功（video_id={fixed_id}）")
+            return [resp_data]
+        logger.warning(f"[tiktok] TIKTOK_VIDEO_ID={fixed_id} 无数据，shop_video_performance_detail 跳过")
+        return []
+
+    logger.info("[tiktok] TIKTOK_VIDEO_ID 未配置，尝试从视频列表自动获取候选 ID ...")
+    video_ids = _fetch_video_ids(app_key, app_secret, limit=10)
+    if not video_ids:
+        logger.warning("[tiktok] 无法获取 video_id 列表，shop_video_performance_detail 跳过")
+        return []
+
+    for vid in video_ids:
+        resp_data = _query_video_performance_detail(app_key, app_secret, vid)
+        if resp_data:
+            logger.info(f"[tiktok] 获取单视频详细表现 ... 成功（video_id={vid}）")
+            return [resp_data]
+
+    logger.warning("[tiktok] 所有候选 video_id 均无数据，shop_video_performance_detail 跳过")
+    return []
+
+
 # ---- 路由分发表 ----
 
 _ROUTE_HANDLERS = {
@@ -784,6 +929,7 @@ _ROUTE_HANDLERS = {
     "return_refund": _fetch_return_refund,
     "affiliate_sample_status": _fetch_affiliate_sample_status,
     "affiliate_campaign_performance": _fetch_affiliate_campaign_performance,
+    "shop_video_performance_detail": _fetch_shop_video_performance_detail,
 }
 
 
