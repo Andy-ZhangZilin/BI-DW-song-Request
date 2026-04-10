@@ -30,7 +30,7 @@
 | youtube | youtube_url（视频URL） | youtube_url | 已生成 | 7 |  |
 | 联盟后台 | awin | awin | 已生成 | 10 |  |
 | EDM | cartsee | cartsee | 已生成 | 16 |  |
-| 联盟后台 | partnerboost | — | 认证失败 | 0 | authenticate() 返回 False |
+| 联盟后台 | partnerboost | partnerboost | 已生成 | 12 |  |
 | 社媒后台 | facebook（social_media） | — | 认证失败 | 0 | authenticate() 返回 False |
 | youtube | youtube_studio | — | 认证失败 | 0 | authenticate() 返回 False |
 
@@ -50,7 +50,7 @@
 | youtube | youtube_url（视频URL） | `reports/youtube_url-raw.md` | 已生成 | 7 |
 | 联盟后台 | awin | `reports/awin-raw.md` | 已生成 | 10 |
 | EDM | cartsee | `reports/cartsee-raw.md` | 已生成 | 16 |
-| 联盟后台 | partnerboost | — | 认证失败 | 0 |
+| 联盟后台 | partnerboost | `reports/partnerboost-raw.md` | 已生成 | 12 |
 | 社媒后台 | facebook（social_media） | — | 认证失败 | 0 |
 | youtube | youtube_studio | — | 认证失败 | 0 |
 
