@@ -127,12 +127,37 @@ def authenticate() -> bool:
         return False
 
 
+def _list_all_sheets(base_id: str, headers: dict, params_base: dict) -> list:
+    """分页拉取 base 下全量 Sheet 列表。"""
+    all_sheets = []
+    next_token = None
+    while True:
+        params = dict(params_base)
+        if next_token:
+            params["nextToken"] = next_token
+        resp = requests.get(
+            f"{_NOTABLE_BASE}/{base_id}/sheets",
+            headers=headers, params=params, timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        all_sheets.extend(data.get("value", []))
+        next_token = data.get("nextToken")
+        if not next_token:
+            break
+    return all_sheets
+
+
 def _resolve_sheet_id(base_id: str, sheet_name: str, headers: dict, params_base: dict) -> str:
     """根据 sheet_name 查找对应的 sheet_id。
 
+    匹配规则（优先级由高到低）：
+      1. 精确匹配 name == sheet_name
+      2. 包含匹配 sheet_name in name（兼容 Sheet 名含 emoji 前缀的情况）
+
     Args:
         base_id:    多维表格 BaseId
-        sheet_name: Sheet 名称
+        sheet_name: Sheet 名称（可不含 emoji 前缀）
         headers:    HTTP 请求头（含 token）
         params_base: 公共查询参数（含 operatorId）
 
@@ -142,15 +167,15 @@ def _resolve_sheet_id(base_id: str, sheet_name: str, headers: dict, params_base:
     Raises:
         RuntimeError: 未找到对应 sheet 时抛出
     """
-    resp = requests.get(
-        f"{_NOTABLE_BASE}/{base_id}/sheets",
-        headers=headers, params=params_base, timeout=30,
-    )
-    resp.raise_for_status()
-    sheets = resp.json().get("value", [])
+    sheets = _list_all_sheets(base_id, headers, params_base)
     if not sheets:
         raise RuntimeError(f"[{SOURCE_NAME}] base {base_id} 中未找到任何 Sheet")
+
+    # 优先精确匹配
     matched = next((s for s in sheets if s.get("name") == sheet_name), None)
+    # 回退：包含匹配（兼容 emoji 前缀）
+    if not matched:
+        matched = next((s for s in sheets if sheet_name in (s.get("name") or "")), None)
     if not matched:
         available = [s.get("name") for s in sheets]
         raise RuntimeError(
