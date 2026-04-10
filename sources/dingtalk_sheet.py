@@ -36,9 +36,10 @@ _WORKBOOK_BASE = "https://api.dingtalk.com/v1.0/doc/workbooks"
 # 工作簿 ID：红人支付需求
 WORKBOOK_ID = "XPwkYGxZV3RRlXAQCjaPjk6zWAgozOKL"
 
-# 最大数据行数（含表头行），用于构造 range 地址，如 A1:ZZ2000
-_MAX_ROWS = 2000
-_MAX_COL = "ZZ"
+# 每次拉取的最大行数（含表头），超过 200 行会触发 503
+_CHUNK_ROWS = 200
+# 数据列上限（不超过 Z 列，即 26 列）
+_MAX_COL = "Z"
 
 
 def _load_token() -> str:
@@ -111,37 +112,60 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             f"[{SOURCE_NAME}] 未配置 DINGTALK_OPERATOR_ID，请在 .env 中填入操作者 unionId"
         )
 
-    headers = {"x-acs-dingtalk-access-token": token}
+    req_headers = {"x-acs-dingtalk-access-token": token}
     sheet_id = _get_first_sheet_id(token, operator_id)
 
-    range_address = f"A1:{_MAX_COL}{_MAX_ROWS}"
-    resp = requests.get(
-        f"{_WORKBOOK_BASE}/{WORKBOOK_ID}/sheets/{sheet_id}/ranges/{range_address}",
-        headers=headers,
-        params={"operatorId": operator_id},
-        timeout=60,
-    )
-    resp.raise_for_status()
+    def _fetch_range(row_start: int, row_end: int) -> list:
+        """拉取指定行范围，返回 displayValues 二维列表。"""
+        rng = f"A{row_start}:{_MAX_COL}{row_end}"
+        resp = requests.get(
+            f"{_WORKBOOK_BASE}/{WORKBOOK_ID}/sheets/{sheet_id}/ranges/{rng}",
+            headers=req_headers,
+            params={"operatorId": operator_id},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return resp.json().get("displayValues", [])
 
-    values: list[list] = resp.json().get("values", [])
-    if not values:
+    # 首次拉取：第 1 行表头 + 数据
+    first_block = _fetch_range(1, _CHUNK_ROWS)
+    if not first_block:
         logger.warning(f"[{SOURCE_NAME}] 工作簿返回空数据")
         return []
 
-    # 第一行为表头
-    headers_row = [str(c) if c is not None else "" for c in values[0]]
+    headers_row = [str(c) if c is not None else "" for c in first_block[0]]
+    all_rows = first_block[1:]  # 去掉表头行
 
+    # 继续分批拉取剩余数据（每次 CHUNK_ROWS 行）
+    batch_start = _CHUNK_ROWS + 1
+    while True:
+        batch_end = batch_start + _CHUNK_ROWS - 1
+        try:
+            block = _fetch_range(batch_start, batch_end)
+        except Exception as e:
+            logger.warning(f"[{SOURCE_NAME}] 拉取第 {batch_start}-{batch_end} 行失败，停止：{e}")
+            break
+        if not block:
+            break
+        # 全空块表示到达末尾
+        non_empty = [r for r in block if any(c is not None and c != "" for c in r)]
+        if not non_empty:
+            break
+        all_rows.extend(block)
+        if len(block) < _CHUNK_ROWS:
+            break
+        batch_start = batch_end + 1
+
+    # 构造扁平字典列表
     records: list[dict] = []
-    for row in values[1:]:
-        # 过滤全空行
+    for row in all_rows:
         if not any(cell is not None and cell != "" for cell in row):
             continue
-        # 补齐不足列
         padded = list(row) + [None] * max(0, len(headers_row) - len(row))
         record = {
             headers_row[i]: padded[i]
             for i in range(len(headers_row))
-            if headers_row[i]  # 跳过无表头的列
+            if headers_row[i]
         }
         records.append(record)
 
