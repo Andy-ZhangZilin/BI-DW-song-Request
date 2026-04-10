@@ -326,8 +326,8 @@ def _render_aggregate_part1(source_results: Dict[str, Dict]) -> List[str]:
             for table_name, field_list in fields_dict.items():
                 table_display = _escape_cell(table_name) if table_name else "—"
                 count = len(field_list)
-                # 字段数为 0 时在状态上备注（通常是权限不足未返回数据）
-                status = _escape_cell(status_raw) if count > 0 else _escape_cell(f"{status_raw}（无数据）")
+                # 字段数为 0 时标为采集失败（无论源状态如何，0 字段即未采集到数据）
+                status = _escape_cell(status_raw) if count > 0 else "采集失败"
                 lines.append(f"| {category} | {display_name} | {table_display} | {status} | {count} | {error} |")
         else:
             status = _escape_cell(status_raw)

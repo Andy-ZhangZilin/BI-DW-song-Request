@@ -269,7 +269,8 @@ class TestWriteAggregateReport:
         }
         reporter.write_aggregate_report(results)
         content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
-        assert "已生成（无数据）" in content
+        assert "采集失败" in content
+        assert "已生成（无数据）" not in content
 
     def test_aggregate_contains_part2_raw_file_index(self, tmp_reports):
         """Part 2 改为 raw 文件索引，不再内联字段清单。"""
