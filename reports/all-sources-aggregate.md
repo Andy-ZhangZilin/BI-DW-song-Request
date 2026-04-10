@@ -26,7 +26,12 @@
 | TikTok-API | tiktok | affiliate_sample_status | 采集失败 | 0 |  |
 | TikTok-API | tiktok | affiliate_campaign_performance | 采集失败 | 0 |  |
 | TikTok-API | tiktok | shop_video_performance_detail | 已生成 | 28 |  |
-| 钉钉 | dingtalk | dingtalk | 已生成 | 24 |  |
+| 钉钉 | dingtalk | kol_tidwe_红人信息汇总 | 已生成 | 24 |  |
+| 钉钉 | dingtalk | kol_tidwe_寄样记录 | 已生成 | 5 |  |
+| 钉钉 | dingtalk | kol_tidwe_内容上线 | 已生成 | 15 |  |
+| 钉钉 | dingtalk | outdoor_原始素材生产及优化 | 已生成 | 36 |  |
+| 钉钉 | dingtalk | outdoor_拍摄资源表KOL信息 | 已生成 | 47 |  |
+| 钉钉 | dingtalk | video_成片交付 | 已生成 | 18 |  |
 | 钉钉 | dingtalk_sheet（普通表格） | dingtalk_sheet | 已生成 | 21 |  |
 | 社媒后台 | youtube（热门榜） | — | ProxyError | 0 | HTTPSConnectionPool(host='www.googleapis.com', port=443): Max retries exceeded with url: /youtube/v3/videos?part=snippet%2Cstatistics&chart=mostPopular&maxResults=1&key=AIzaSyA8vwnXPVu9JLFwL8JnLPE3JP5CTKycKEY (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response'))) |
 | youtube | youtube_url（视频URL） | youtube_url | 已生成 | 7 |  |
@@ -48,7 +53,7 @@
 |-----|---------|------------|---------|-------|
 | TripleWhale | triplewhale | `reports/triplewhale-raw.md` | 已生成 | 700 |
 | TikTok-API | tiktok | `reports/tiktok-raw.md` | 已生成 | 121 |
-| 钉钉 | dingtalk | `reports/dingtalk-raw.md` | 已生成 | 24 |
+| 钉钉 | dingtalk | `reports/dingtalk-raw.md` | 已生成 | 145 |
 | 钉钉 | dingtalk_sheet（普通表格） | `reports/dingtalk_sheet-raw.md` | 已生成 | 21 |
 | 社媒后台 | youtube（热门榜） | — | ProxyError | 0 |
 | youtube | youtube_url（视频URL） | `reports/youtube_url-raw.md` | 已生成 | 7 |
