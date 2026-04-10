@@ -242,16 +242,44 @@ class TestWriteAggregateReport:
         content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
         assert "triplewhale" in content
         assert "已生成" in content
-        assert "social_media" in content
+        # social_media 显示为 facebook（social_media）
+        assert "facebook（social_media）" in content
         assert "NotImplementedError" in content
 
-    def test_aggregate_contains_part2_fields(self, tmp_reports):
+    def test_aggregate_part1_has_category_column(self, tmp_reports):
+        """Part 1 含分类列，使用 SOURCE_META 映射。"""
         reporter.write_aggregate_report(self._make_source_results())
         content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
-        assert "Part 2：各数据源实际字段清单" in content
-        assert "order_id" in content
-        assert "impressions" in content
-        assert "viewCount" in content
+        assert "分类" in content
+        assert "TripleWhale" in content
+        assert "社媒后台" in content
+
+    def test_aggregate_part1_zero_field_table_annotated(self, tmp_reports):
+        """字段数为 0 但状态为已生成时，状态标注（无数据）。"""
+        results = {
+            "tiktok": {
+                "success": True,
+                "status": "已生成",
+                "error": None,
+                "fields": {
+                    "shop_product_performance": [{"field_name": "f", "data_type": "str", "sample_value": "v", "nullable": False}],
+                    "ad_spend": [],
+                },
+            }
+        }
+        reporter.write_aggregate_report(results)
+        content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
+        assert "已生成（无数据）" in content
+
+    def test_aggregate_contains_part2_raw_file_index(self, tmp_reports):
+        """Part 2 改为 raw 文件索引，不再内联字段清单。"""
+        reporter.write_aggregate_report(self._make_source_results())
+        content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
+        assert "Part 2：各数据源字段详情" in content
+        assert "reports/triplewhale-raw.md" in content
+        # 字段名不应内联在 Part 2 中
+        assert "order_id" not in content
+        assert "impressions" not in content
 
     def test_aggregate_contains_part3_report_templates(self, tmp_reports):
         reporter.write_aggregate_report(self._make_source_results())
@@ -306,8 +334,8 @@ class TestWriteAggregateReport:
         content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
         assert "数据来源提示" in content
 
-    def test_aggregate_failed_source_no_fields(self, tmp_reports):
-        """失败的数据源在 Part 2 中标注无字段数据。"""
+    def test_aggregate_failed_source_appears_in_part1(self, tmp_reports):
+        """失败的数据源在 Part 1 中出现，状态正确展示。"""
         results = {
             "failed_src": {
                 "success": False,
@@ -320,7 +348,6 @@ class TestWriteAggregateReport:
         content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
         assert "failed_src" in content
         assert "人机验证超时" in content
-        assert "无字段数据" in content
 
 
 # ---------------------------------------------------------------------------

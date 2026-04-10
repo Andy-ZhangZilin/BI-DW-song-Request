@@ -23,6 +23,22 @@ logger = logging.getLogger(__name__)
 REPORTS_DIR = Path("reports")
 REQUIREMENTS_PATH = Path("config") / "field_requirements.yaml"
 
+# --- 数据源元信息：分类 + 显示名称 ---
+# 用于 Part 1 汇总表中的"分类"列和可读名称展示
+SOURCE_META: Dict[str, Dict[str, str]] = {
+    "triplewhale":    {"category": "TripleWhale",  "display_name": "triplewhale"},
+    "tiktok":         {"category": "TikTok-API",   "display_name": "tiktok"},
+    "dingtalk":       {"category": "钉钉",          "display_name": "dingtalk"},
+    "youtube":        {"category": "社媒后台",       "display_name": "youtube（热门榜）"},
+    "youtube_url":    {"category": "youtube",       "display_name": "youtube_url（视频URL）"},
+    "youtube_studio": {"category": "youtube",       "display_name": "youtube_studio"},
+    "awin":           {"category": "联盟后台",       "display_name": "awin"},
+    "cartsee":        {"category": "EDM",           "display_name": "cartsee"},
+    "partnerboost":   {"category": "联盟后台",       "display_name": "partnerboost"},
+    "social_media":   {"category": "社媒后台",       "display_name": "facebook（social_media）"},
+    "mailchimp":      {"category": "EDM",           "display_name": "mailchimp"},
+}
+
 
 # ---------------------------------------------------------------------------
 # 私有辅助函数
@@ -236,7 +252,7 @@ def write_aggregate_report(source_results: Dict[str, Dict]) -> None:
 
     文档结构：
     - Part 1：数据源采集结论汇总（每个数据源的运行状态）
-    - Part 2：各数据源实际字段清单（供 AI 分析引用）
+    - Part 2：各数据源字段详情索引（指向各 raw 报告文件）
     - Part 3：11 张报表字段映射模板（待 AI 填充）
     - Part 4：AI 分析提示语
 
@@ -290,59 +306,62 @@ def write_aggregate_report(source_results: Dict[str, Dict]) -> None:
 # ---------------------------------------------------------------------------
 
 def _render_aggregate_part1(source_results: Dict[str, Dict]) -> List[str]:
-    """Part 1：数据源采集结论汇总表。"""
+    """Part 1：数据源采集结论汇总表（含分类列）。"""
     lines: List[str] = [
         "---",
         "",
         "## Part 1：数据源采集结论汇总",
         "",
-        "| 数据来源 | 接口/表 | 采集状态 | 字段数 | 说明 |",
-        "|---------|--------|---------|-------|------|",
+        "| 分类 | 数据来源 | 接口/表 | 采集状态 | 字段数 | 说明 |",
+        "|-----|---------|--------|---------|-------|------|",
     ]
     for source_name, result in source_results.items():
-        status = _escape_cell(result.get("status", "未知"))
+        meta = SOURCE_META.get(source_name, {})
+        category = _escape_cell(meta.get("category", source_name))
+        display_name = _escape_cell(meta.get("display_name", source_name))
+        status_raw = result.get("status", "未知")
         error = _escape_cell(result.get("error")) or ""
         fields_dict = result.get("fields", {})
         if fields_dict:
             for table_name, field_list in fields_dict.items():
                 table_display = _escape_cell(table_name) if table_name else "—"
                 count = len(field_list)
-                lines.append(f"| {source_name} | {table_display} | {status} | {count} | {error} |")
+                # 字段数为 0 时在状态上备注（通常是权限不足未返回数据）
+                status = _escape_cell(status_raw) if count > 0 else _escape_cell(f"{status_raw}（无数据）")
+                lines.append(f"| {category} | {display_name} | {table_display} | {status} | {count} | {error} |")
         else:
-            lines.append(f"| {source_name} | — | {status} | 0 | {error} |")
+            status = _escape_cell(status_raw)
+            lines.append(f"| {category} | {display_name} | — | {status} | 0 | {error} |")
     lines.append("")
     return lines
 
 
 def _render_aggregate_part2(source_results: Dict[str, Dict]) -> List[str]:
-    """Part 2：各数据源实际字段清单（供 AI 分析引用的真实字段数据）。"""
+    """Part 2：各数据源字段详情索引（字段明细见各 raw 报告文件）。"""
     lines: List[str] = [
         "---",
         "",
-        "## Part 2：各数据源实际字段清单",
+        "## Part 2：各数据源字段详情",
         "",
-        "> 以下为各数据源实际返回的字段列表，AI 分析时必须引用这些真实字段，不可虚构。",
+        "> 各数据源字段明细请查阅对应 raw 报告文件（`reports/{source}-raw.md`）。",
+        "> AI 分析时请打开对应文件引用真实字段，不可虚构字段名。",
         "",
+        "| 分类 | 数据来源 | Raw 报告文件 | 采集状态 | 字段数 |",
+        "|-----|---------|------------|---------|-------|",
     ]
     for source_name, result in source_results.items():
+        meta = SOURCE_META.get(source_name, {})
+        category = _escape_cell(meta.get("category", source_name))
+        display_name = _escape_cell(meta.get("display_name", source_name))
+        status = _escape_cell(result.get("status", "未知"))
         fields_dict = result.get("fields", {})
-        if not fields_dict:
-            lines += [f"### {source_name}", "", f"采集状态：{result.get('status', '未知')}（无字段数据）", ""]
-            continue
-        for table_name, field_list in fields_dict.items():
-            table_display = table_name if table_name else "默认"
-            lines += [
-                f"### {source_name} / {table_display}",
-                "",
-                "| 字段名 | 类型 | 示例值 |",
-                "|--------|------|--------|",
-            ]
-            for field in field_list:
-                fname = _escape_cell(field.get("field_name", ""))
-                dtype = _escape_cell(field.get("data_type", ""))
-                sample = _escape_cell(field.get("sample_value"))
-                lines.append(f"| {fname} | {dtype} | {sample} |")
-            lines.append("")
+        total_fields = sum(len(fl) for fl in fields_dict.values()) if fields_dict else 0
+        if total_fields > 0:
+            raw_path = f"`reports/{source_name}-raw.md`"
+        else:
+            raw_path = "—"
+        lines.append(f"| {category} | {display_name} | {raw_path} | {status} | {total_fields} |")
+    lines.append("")
     return lines
 
 
