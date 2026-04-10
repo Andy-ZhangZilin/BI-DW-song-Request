@@ -29,6 +29,7 @@ SOURCE_META: Dict[str, Dict[str, str]] = {
     "triplewhale":    {"category": "TripleWhale",  "display_name": "triplewhale"},
     "tiktok":         {"category": "TikTok-API",   "display_name": "tiktok"},
     "dingtalk":       {"category": "钉钉",          "display_name": "dingtalk"},
+    "dingtalk_sheet": {"category": "钉钉",          "display_name": "dingtalk_sheet（普通表格）"},
     "youtube":        {"category": "社媒后台",       "display_name": "youtube（热门榜）"},
     "youtube_url":    {"category": "youtube",       "display_name": "youtube_url（视频URL）"},
     "youtube_studio": {"category": "youtube",       "display_name": "youtube_studio"},
