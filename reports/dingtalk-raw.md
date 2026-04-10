@@ -1,10 +1,10 @@
 # dingtalk 字段验证报告（Raw）
 
-**生成时间：** 2026-04-09 01:18:20
+**生成时间：** 2026-04-10 11:49:28
 
 ## 接口：N/A
 
-**样本记录数：** 289
+**样本记录数：** 291
 
 | 字段名 | 类型 | 示例值 | 可空 |
 |--------|------|--------|------|
@@ -17,10 +17,7 @@
 | *佣金率 | string | {"sequence":"#REF!","identifier":"#REF!","data":"[{\"fxError\":\"#REF!\"}]","filterFactor":["#REF!"]} | 否 |
 | *粉丝数（k） | string | 43 | 否 |
 | 备注 | string | 红人有自己的销售网站，在网站上挂链接https://frostyfreedom.com/ | 否 |
-| *寄样地址 | string | 10251 road 852
-Philadelphia MS 39350
-
-Phone 601-416-4224 | 否 |
+| *寄样地址 | string | 10251 road 852 Philadelphia MS 39350  Phone 601-416-4224 | 否 |
 | *全名 | string | Randy Kunath | 否 |
 | 红人等级 | string | B | 否 |
 | *合作模式 | string | 单次合作 | 否 |
@@ -33,14 +30,5 @@ Phone 601-416-4224 | 否 |
 | 2025Q4 GMV | string | 90.2 | 否 |
 | 后续动作 | string | 重谈价格和交付项 | 否 |
 | 2025Q4播放 | string | 5655 | 否 |
-| 均播（k） | string | 4.4 | 否 |
+| 长视频均播（k） | string | 4.4 | 否 |
 | *所在州 | string | Mississippi | 否 |
-
-## 需求字段（待人工对照）
-
-| 需求字段（中文） | 报表 | 对照结果 |
-|----------------|------|---------|
-| 营销日期 | marketing_performance_table | ⬜ 待确认 |
-| 营销投入 | marketing_performance_table | ⬜ 待确认 |
-| 渠道名称 | marketing_performance_table | ⬜ 待确认 |
-| 转化数 | marketing_performance_table | ⬜ 待确认 |

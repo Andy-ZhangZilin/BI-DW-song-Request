@@ -1,6 +1,6 @@
 # partnerboost 字段验证报告（Raw）
 
-**生成时间：** 2026-04-09 01:27:01
+**生成时间：** 2026-04-10 11:34:57
 
 ## 接口：N/A
 
@@ -10,19 +10,13 @@
 |--------|------|--------|------|
 | _col0 | string | Total | 否 |
 | Publisher ID | null |  | 是 |
-| Clicks | string | 55,096 | 否 |
-| EPC | string | $3.84 | 否 |
-| Transactions | string | 168 | 否 |
-| Conversion% | string | 0.30% | 否 |
-| Gross Sales | string | $21,158.22 | 否 |
-| AOV | string | $125.94 | 否 |
+| Clicks | string | 52,998 | 否 |
+| EPC | string | $4.03 | 否 |
+| Transactions | string | 171 | 否 |
+| Conversion% | string | 0.32% | 否 |
+| Gross Sales | string | $21,373.05 | 否 |
+| AOV | string | $124.98 | 否 |
 | Avg Comm% | string | 10.00% | 否 |
-| Commission | string | $2,116.02 | 否 |
-| Network Fee | string | $423.26 | 否 |
-| Total Payout | string | $2,539.28 | 否 |
-
-## 需求字段（待人工对照）
-
-| 需求字段（中文） | 报表 | 对照结果 |
-|----------------|------|---------|
-| （暂无配置的需求字段） | — | — |
+| Commission | string | $2,137.52 | 否 |
+| Network Fee | string | $427.57 | 否 |
+| Total Payout | string | $2,565.09 | 否 |

@@ -1,6 +1,6 @@
 # triplewhale 字段验证报告（Raw）
 
-**生成时间：** 2026-04-08 16:11:32
+**生成时间：** 2026-04-10 11:44:37
 
 ## 接口：pixel_orders_table
 
@@ -14,26 +14,26 @@
 | adset_id | string |  | 否 |
 | adset_name | null |  | 是 |
 | attribution_window | string | lifetime | 否 |
-| billing_city | string | Smethport | 否 |
+| billing_city | string | Savannah | 否 |
 | billing_country | string | United States | 否 |
 | billing_country_code | string | US | 否 |
-| billing_province | string | Pennsylvania | 否 |
-| browser | string | Chrome | 否 |
+| billing_province | string | Missouri | 否 |
+| browser | string | Samsung Internet | 否 |
 | campaign_id | string |  | 否 |
 | campaign_name | string |  | 否 |
 | campaign_type | null |  | 是 |
 | cancelled_at | null |  | 是 |
 | channel | string | smile_rewards | 否 |
-| click_date | string | 2026-03-13 | 否 |
-| click_ts | string | 2026-03-12 18:16:33 | 否 |
+| click_date | string | 2025-01-16 | 否 |
+| click_ts | string | 2025-01-16 14:17:37 | 否 |
 | cogs | number | 0 | 否 |
 | cost_of_goods | number | 0 | 否 |
-| created_at | string | 2026-03-25 00:14:57 | 否 |
+| created_at | string | 2026-03-27 00:41:53 | 否 |
 | currency | string | USD | 否 |
 | currency_rate | number | 1 | 否 |
-| custom_combined_gross_profit | number | 213.17 | 否 |
-| custom_combined_gross_sales | number | 224.67 | 否 |
-| custom_combined_net_revenue | number | 203.18 | 否 |
+| custom_combined_gross_profit | number | 103.91 | 否 |
+| custom_combined_gross_sales | number | 111.77 | 否 |
+| custom_combined_net_revenue | number | 97.64 | 否 |
 | custom_expenses | number | 0 | 否 |
 | custom_gross_profit | number | 0 | 否 |
 | custom_gross_sales | number | 0 | 否 |
@@ -45,23 +45,23 @@
 | custom_total_items_quantity | number | 0 | 否 |
 | customer_email | string | blocked | 否 |
 | customer_first_name | string | blocked | 否 |
-| customer_from_city | string | Smethport | 否 |
+| customer_from_city | string | Savannah | 否 |
 | customer_from_country_code | string | US | 否 |
 | customer_from_country_name | string | United States | 否 |
-| customer_from_state_code | string | PA | 否 |
-| customer_id | string | 5690818723909 | 否 |
+| customer_from_state_code | string | MO | 否 |
+| customer_id | string | 7076120100933 | 否 |
 | customer_last_name | string | blocked | 否 |
-| customer_tags | array | ['member-label', 'signed up'] | 否 |
-| device | string | desktop | 否 |
-| discount_amount | number | 32.99 | 否 |
-| discount_code | string | BG30 | 否 |
-| discount_codes | array | [{'amount': 32.99, 'code': 'BG30', 'type': 'percentage'}] | 否 |
-| event_date | string | 2026-03-25 | 否 |
+| customer_tags | array | ['CartSee', 'CartSee-Form', 'Login with Shop', 'member', 'member-label', 'Shop', 'signed up'] | 否 |
+| device | string | mobile | 否 |
+| discount_amount | number | 21.99 | 否 |
+| discount_code | string | RC20 | 否 |
+| discount_codes | array | [{'amount': 21.99, 'code': 'RC20', 'type': 'percentage'}] | 否 |
+| event_date | string | 2026-03-27 | 否 |
 | event_hour | number | 0 | 否 |
 | financial_status | string | paid | 否 |
 | fulfillment_status | string | fulfilled | 否 |
-| gross_product_sales | number | 224.67 | 否 |
-| gross_sales | number | 203.17999267578125 | 否 |
+| gross_product_sales | number | 111.77 | 否 |
+| gross_sales | number | 97.63999938964844 | 否 |
 | handling_fees | number | 0 | 否 |
 | integration_id | string | piscifun.myshopify.com | 否 |
 | is_first_order_in_subscription | boolean | False | 否 |
@@ -70,18 +70,18 @@
 | landing_page | string | / | 否 |
 | linear_weight | number | 1 | 否 |
 | model | string | Triple Attribution | 否 |
-| order_id | string | 6507850104901 | 否 |
-| order_name | string | #298688 | 否 |
-| order_revenue | number | 203.17999267578125 | 否 |
+| order_id | string | 6511942172741 | 否 |
+| order_name | string | #299033 | 否 |
+| order_revenue | number | 97.63999938964844 | 否 |
 | orders_quantity | number | 1 | 否 |
 | payment_gateway_costs | number | 0 | 否 |
 | platform | string | shopify | 否 |
-| product_quantity_sold_in_order | number | 3 | 否 |
-| products_info | array | [{'product_id': '7796364640325', 'product_name': 'worry-free purchase', 'vendor': None, 'product_type': None, 'product_tags': [], 'product_sku': 'SEEL-WFP', 'variant_id': '43800087461957', 'product_name_price': 4.68999, 'discount_amount_for_product': 0, 'net_discount_amount_for_product': 0, 'product_name_quantity_sold': 1, 'is_gift_card': False, 'single_product_cost': 0, 'properties': [], 'duties': []}, {'product_id': '3958726983703', 'product_name': 'piscifun®  alinox 300 low profile baitcasting reel casting reels', 'vendor': None, 'product_type': None, 'product_tags': [], 'product_sku': 'RL170-L-V2-PN', 'variant_id': '29491487768599', 'product_name_price': 109.99, 'discount_amount_for_product': 0, 'net_discount_amount_for_product': 0, 'product_name_quantity_sold': 1, 'is_gift_card': False, 'single_product_cost': 0, 'properties': [], 'duties': []}, {'product_id': '3958726983703', 'product_name': 'piscifun®  alinox 300 low profile baitcasting reel casting reels', 'vendor': None, 'product_type': None, 'product_tags': [], 'product_sku': 'RL170-L-V2-PN', 'variant_id': '29491487768599', 'product_name_price': 109.99, 'discount_amount_for_product': 0, 'net_discount_amount_for_product': 32.99, 'product_name_quantity_sold': 1, 'is_gift_card': False, 'single_product_cost': 0, 'properties': [], 'duties': []}] | 否 |
+| product_quantity_sold_in_order | number | 2 | 否 |
+| products_info | array | [{'product_id': '7796364640325', 'product_name': 'worry-free purchase', 'vendor': None, 'product_type': None, 'product_tags': [], 'product_sku': 'SEEL-WFP', 'variant_id': '43800087167045', 'product_name_price': 1.78, 'discount_amount_for_product': 0, 'net_discount_amount_for_product': 0, 'product_name_quantity_sold': 1, 'is_gift_card': False, 'single_product_cost': 0, 'properties': [], 'duties': []}, {'product_id': '3958726983703', 'product_name': 'piscifun®  alinox 300 low profile baitcasting reel casting reels', 'vendor': None, 'product_type': None, 'product_tags': [], 'product_sku': 'RL170-BK-RH-PN', 'variant_id': '42384410542149', 'product_name_price': 109.99, 'discount_amount_for_product': 0, 'net_discount_amount_for_product': 21.99, 'product_name_quantity_sold': 1, 'is_gift_card': False, 'single_product_cost': 0, 'properties': [], 'duties': []}] | 否 |
 | refund_money | number | 0 | 否 |
-| session_city | string | State College | 否 |
+| session_city | string | Clear Lake | 否 |
 | session_country | string | United States | 否 |
-| session_id | string | cls0o6e5o1sCLUO24s_1774368616379 | 否 |
+| session_id | string | clqi7zfzv2w3euV1Jk_1774543108134 | 否 |
 | shipping_city | string | blocked | 否 |
 | shipping_costs | number | 0 | 否 |
 | shipping_country | string | United States | 否 |
@@ -97,28 +97,16 @@
 | shop_timezone | string | Asia/Shanghai | 否 |
 | source_name | string | web | 否 |
 | tags | array | ['seel-wfd'] | 否 |
-| taxes | number | 11.5 | 否 |
-| triple_id | string | cls0o6e5o1sCLUO24s | 否 |
+| taxes | number | 7.86 | 否 |
+| triple_id | string | clqi7zfzv2w3euV1Jk | 否 |
 | utm_medium | string |  | 否 |
 | utm_source | string | smile_rewards | 否 |
-
-## 需求字段（待人工对照）
-
-| 需求字段（中文） | 报表 | 对照结果 |
-|----------------|------|---------|
-| 日期 | profit_table | ⬜ 待确认 |
-| 销售额 | profit_table | ⬜ 待确认 |
-| 订单量 | profit_table | ⬜ 待确认 |
-| 曝光量 | marketing_table | ⬜ 待确认 |
-| 点击量 | marketing_table | ⬜ 待确认 |
-| 广告花费 | marketing_table | ⬜ 待确认 |
-| ROAS | marketing_table | ⬜ 待确认 |
 
 ---
 
 ## 接口：pixel_joined_tvf
 
-**生成时间：** 2026-04-08 16:11:37
+**生成时间：** 2026-04-10 11:44:42
 
 **样本记录数：** 1
 
@@ -300,7 +288,7 @@
 
 ## 接口：sessions_table
 
-**生成时间：** 2026-04-08 16:11:39
+**生成时间：** 2026-04-10 11:44:45
 
 **样本记录数：** 1
 
@@ -308,31 +296,31 @@
 |--------|------|--------|------|
 | ad_id | string |  | 否 |
 | adset_id | string |  | 否 |
-| browser | string | Edge | 否 |
+| browser | string | Chrome | 否 |
 | campaign_id | string |  | 否 |
 | channel | string | AMZN_US_ShopDirect | 否 |
-| city | string | Waitsfield | 否 |
+| city | string | Broomfield (Interlocken) | 否 |
 | country | string | United States | 否 |
 | country_code | string | US | 否 |
-| device | string | desktop | 否 |
-| device_model | string |  | 否 |
+| device | string | mobile | 否 |
+| device_model | string | K | 否 |
 | domain | string | piscifun.com | 否 |
-| event_date | string | 2026-04-04 | 否 |
+| event_date | string | 2026-04-05 | 否 |
 | event_date_timezone | string | Asia/Shanghai | 否 |
 | event_hour | number | 5 | 否 |
 | is_new_visitor | boolean | False | 否 |
 | keyword_id | string |  | 否 |
-| landing_page | string | /products/wholesale-piscifun-kraken-electric-big-game-reels-heiko-recommended-fishing-reels | 否 |
+| landing_page | string | /products/carbon-r1-spinning-rod-carbon-x-ii-spinning-reels-combo | 否 |
 | ms_country | string |  | 否 |
 | ms_country_name | string |  | 否 |
 | session_elapsed_time | number | 0 | 否 |
-| session_id | string | cm67sgko71RDOCj1zv_1775251636062 | 否 |
+| session_id | string | cmnkgqaiy4Wrksl1qr_1775337504770 | 否 |
 | session_page_views | number | 1 | 否 |
-| session_start_ts | string | 2026-04-03 21:27:16 | 否 |
+| session_start_ts | string | 2026-04-04 21:18:24 | 否 |
 | shop_id | string | piscifun.myshopify.com | 否 |
 | shop_name | string | piscifun | 否 |
 | source | string | AMZN_US_ShopDirect | 否 |
-| triple_id | string | cm67sgko71RDOCj1zv | 否 |
+| triple_id | string | cmnkgqaiy4Wrksl1qr | 否 |
 | utm_medium | string |  | 否 |
 | utm_source | string | AMZN_US_ShopDirect | 否 |
 
@@ -340,7 +328,7 @@
 
 ## 接口：product_analytics_tvf
 
-**生成时间：** 2026-04-08 16:11:49
+**生成时间：** 2026-04-10 11:44:55
 
 **样本记录数：** 1
 
@@ -348,7 +336,7 @@
 |--------|------|--------|------|
 | added_to_cart_events | number | 18 | 否 |
 | added_to_cart_items | number | 20 | 否 |
-| clicks | number | 10.176470588235293 | 否 |
+| clicks | number | 10.411764705882353 | 否 |
 | collection_id | null |  | 是 |
 | collection_name | null |  | 是 |
 | customers | number | 1 | 否 |
@@ -357,8 +345,8 @@
 | fulfillment_costs | number | 0.45000001788139343 | 否 |
 | id | string | 7924793049157 | 否 |
 | images | array | [{'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/02_3bea92ca-d8de-4cdf-a7e3-db091a395a62.jpg?v=1762495087', 'image_alt': '', 'image_id': 38150929907781}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/03_36536bf0-f3fb-4be6-aee8-a537f98e4253.jpg?v=1762495087', 'image_alt': '', 'image_id': 36689198874693}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/04_eaee19f5-d3d0-4d8d-875c-e4e6d9798754.jpg?v=1762495087', 'image_alt': '', 'image_id': 36638147313733}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/06_28280523-2679-46d9-b6d2-c950d1e3a050.jpg?v=1762495087', 'image_alt': '', 'image_id': 36689197531205}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/06_4062a332-1478-4c83-8616-66123b637a72.jpg?v=1762495087', 'image_alt': '', 'image_id': 36689197563973}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/08_c9541cba-7904-4ae3-a1bd-5e88bc89d465.jpg?v=1762495087', 'image_alt': '', 'image_id': 36638147182661}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/09_98ccb0c1-aee2-45ab-ac73-89e9a3b66a35.jpg?v=1762495087', 'image_alt': '', 'image_id': 36638147051589}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/05_41a75feb-192b-4bb5-889e-eaa0714e736a.jpg?v=1762495087', 'image_alt': '', 'image_id': 36696799477829}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/011_4b2cd3d6-f10a-48f7-add9-bf09b68b77be.jpg?v=1762495087', 'image_alt': '', 'image_id': 36689197105221}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/07_X-CROSS_59f6abc4-2846-4bde-a098-e3844803442e.jpg?v=1762495087', 'image_alt': '', 'image_id': 36689197137989}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/010_39363f82-dd1e-4539-90bb-232619331440.jpg?v=1762495087', 'image_alt': '', 'image_id': 36689197498437}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/01_f60c6e80-6eae-46c6-8e49-6818068d6e88.jpg?v=1762495087', 'image_alt': '', 'image_id': 36662885449797}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/01_56532f84-8f2c-46ba-871f-eac3d8be0d2e.jpg?v=1762495087', 'image_alt': '', 'image_id': 36696854822981}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/01_ebc395d9-9da7-4fff-bfdd-6e49f30e9e6c.jpg?v=1762495087', 'image_alt': '', 'image_id': 36696873697349}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/01_5e267867-f638-4dbe-83a8-2fea82cb2a6b.jpg?v=1762495087', 'image_alt': '', 'image_id': 38150929842245}, {'image_src': 'https://cdn.shopify.com/s/files/1/1515/7758/files/02_449c8fca-2ccc-4caa-9c37-0c24537282e8.jpg?v=1762140911', 'image_alt': '', 'image_id': 38150929940549}] | 否 |
-| impressions | number | 271.05882352941177 | 否 |
-| inventory_quantity | number | 195 | 否 |
+| impressions | number | 273.94117647058823 | 否 |
+| inventory_quantity | number | 189 | 否 |
 | name | string | Flash Sale PISCIFUN® Lumicat E Catfish Rods 1 or 2-Piece Casting Rod or Spinning Rod | 否 |
 | new_customer_fulfillment_costs | number | 0 | 否 |
 | new_customer_orders | number | 0 | 否 |
@@ -379,7 +367,7 @@
 | shop_id | string | piscifun.myshopify.com | 否 |
 | shop_name | string | piscifun | 否 |
 | sku | string |  | 否 |
-| spend | number | 1.7611765020033892 | 否 |
+| spend | number | 1.777058769674862 | 否 |
 | title | string | Flash Sale PISCIFUN® Lumicat E Catfish Rods 1 or 2-Piece Casting Rod or Spinning Rod | 否 |
 | total_items_sold | number | 1 | 否 |
 | total_order_value | number | 130.76 | 否 |
@@ -387,13 +375,13 @@
 | variant_name | null |  | 是 |
 | variant_title | null |  | 是 |
 | vendor | string | Piscifun | 否 |
-| visits | number | 10.529411764705882 | 否 |
+| visits | number | 10.588235294117647 | 否 |
 
 ---
 
 ## 接口：pixel_keywords_joined_tvf
 
-**生成时间：** 2026-04-08 16:11:52
+**生成时间：** 2026-04-10 11:44:58
 
 **样本记录数：** 1
 
@@ -422,13 +410,13 @@
 | campaign_name | string | CPC_Search_品类 | 否 |
 | campaign_status | string | ACTIVE | 否 |
 | channel | string | google-ads | 否 |
-| channel_reported_all_conversions | number | 0 | 否 |
-| channel_reported_conversion_value | number | 0 | 否 |
+| channel_reported_all_conversions | number | 0.784641 | 否 |
+| channel_reported_conversion_value | number | 46.41258239746094 | 否 |
 | channel_type | null |  | 是 |
 | checkouts | null |  | 是 |
 | click_orders | number | 0 | 否 |
 | click_revenue | number | 0 | 否 |
-| clicks | number | 0 | 否 |
+| clicks | number | 4 | 否 |
 | cogs | number | 0 | 否 |
 | contacts | null |  | 是 |
 | cost_of_goods | number | 0 | 否 |
@@ -444,7 +432,7 @@
 | delivered | null |  | 是 |
 | discount_codes | array | [] | 否 |
 | email_signups | null |  | 是 |
-| event_date | string | 2026-04-08 | 否 |
+| event_date | string | 2026-04-09 | 否 |
 | experiment_CPIC | null |  | 是 |
 | experiment_CPIC_lower | null |  | 是 |
 | experiment_CPIC_upper | null |  | 是 |
@@ -461,7 +449,7 @@
 | experiment_revenue_incremental_share_percent | null |  | 是 |
 | gross_product_sales | number | 0 | 否 |
 | gross_sales | number | 0 | 否 |
-| impressions | number | 5 | 否 |
+| impressions | number | 18 | 否 |
 | incremental_revenue_experiment | null |  | 是 |
 | incremental_revenue_lower_bound_experiment | null |  | 是 |
 | incremental_revenue_upper_bound_experiment | null |  | 是 |
@@ -508,7 +496,7 @@
 | shipping | null |  | 是 |
 | shop_id | null |  | 是 |
 | shop_name | null |  | 是 |
-| spend | number | 0 | 否 |
+| spend | number | 0.9613940119743347 | 否 |
 | spend_experiment | null |  | 是 |
 | sqls | null |  | 是 |
 | subscribed_to_list | null |  | 是 |
@@ -528,7 +516,7 @@
 
 ## 接口：ads_table
 
-**生成时间：** 2026-04-08 16:11:56
+**生成时间：** 2026-04-10 11:45:01
 
 **样本记录数：** 1
 
@@ -597,7 +585,7 @@
 | currency_rate | number | 1 | 否 |
 | destination_url | string |  | 否 |
 | engagements | number | 0 | 否 |
-| event_date | string | 2026-03-30 | 否 |
+| event_date | string | 2026-04-08 | 否 |
 | event_hour | number | 0 | 否 |
 | follows | number | 0 | 否 |
 | i_revenue | null |  | 是 |
@@ -689,7 +677,7 @@
 
 ## 接口：social_media_comments_table
 
-**生成时间：** 2026-04-08 16:11:58
+**生成时间：** 2026-04-10 11:45:03
 
 **样本记录数：** 1
 
@@ -715,7 +703,7 @@
 
 ## 接口：social_media_pages_table
 
-**生成时间：** 2026-04-08 16:12:00
+**生成时间：** 2026-04-10 11:45:05
 
 **样本记录数：** 1
 
@@ -725,40 +713,40 @@
 | category | string | Fishing Store | 否 |
 | channel | string | meta-analytics | 否 |
 | cover_url | string | https://scontent-ord5-3.xx.fbcdn.net/v/t39.30808-6/539424799_1084919173847926_4937721089198745518_n.jpg?_nc_cat=107&ccb=1-7&_nc_sid=dc4938&_nc_ohc=2-xVAwvqMmkQ7kNvwHZVB-I&_nc_oc=AdmgdVf1MWXPN6EladiIWBcICr5xPLMGjJSyBMNa1xKEPicc_XQwtMZZu9H-tSYBaI8&_nc_zt=23&_nc_ht=scontent-ord5-3.xx&edm=AJdBtusEAAAA&_nc_gid=p3X-AXUhtOQV-QQc38Nibw&_nc_tpa=Q5bMBQFL3XQixdCUsScr_abe-Kp-HNCLjFumlmMcR3y-q4b2H-95Yx8joerAcVFwtUwVXDmjS9QrMPn7GQ&oh=00_AfuETkdmSp-EwIojTUNeVC1PAo58e7d7fzh17T5rwUJ8kA&oe=6985F553 | 否 |
-| event_date | string | 2026-04-06 | 否 |
-| fan_adds | number | 33 | 否 |
-| fan_removes | number | 6 | 否 |
+| event_date | string | 2026-04-08 | 否 |
+| fan_adds | number | 32 | 否 |
+| fan_removes | number | 3 | 否 |
 | image_url | string | https://scontent-ord5-3.xx.fbcdn.net/v/t39.30808-1/415005887_672024161804098_1318847427524706965_n.jpg?stp=dst-jpg_s720x720_tt6&_nc_cat=106&ccb=1-7&_nc_sid=79bf43&_nc_ohc=GVgUBRUB3zEQ7kNvwGsFjTm&_nc_oc=AdmfoNgTeQh5koqN8sjdbUJN9PlsGieymBZSD0Vw53E1XYG7-H728Y4onu6YiL_hrFo&_nc_zt=24&_nc_ht=scontent-ord5-3.xx&edm=AJdBtusEAAAA&_nc_gid=p3X-AXUhtOQV-QQc38Nibw&_nc_tpa=Q5bMBQFXG8qGrLGC8zokR9N9t0qyyx5gGs7Hd1haMvgYR2ayE1x0SzuMeZ_9U1jIuX_WRj1dtDEFwQGX1g&oh=00_AftMaotNj1-eyK1bHTWqM4_CQ8ork_mFEnbzdHcV6AxgZQ&oe=6985E4A9 | 否 |
-| impressions | number | 249738 | 否 |
+| impressions | number | 225802 | 否 |
 | impressions_paid | null |  | 是 |
 | impressions_unique | null |  | 是 |
 | impressions_viral | null |  | 是 |
 | page_id | string | 869728316447140 | 否 |
 | page_name | string | Piscifun | 否 |
 | page_permalink | string | https://www.facebook.com/869728316447140 | 否 |
-| video_views | number | 19939 | 否 |
-| views_total | number | 924 | 否 |
+| video_views | number | 17768 | 否 |
+| views_total | number | 788 | 否 |
 | website | string | https://linktr.ee/Piscifun | 否 |
 
 ---
 
 ## 接口：creatives_table
 
-**生成时间：** 2026-04-08 16:12:05
+**生成时间：** 2026-04-10 11:45:11
 
 **样本记录数：** 1
 
 | 字段名 | 类型 | 示例值 | 可空 |
 |--------|------|--------|------|
-| account_id | string | act_447339210551911 | 否 |
+| account_id | string | act_1225414248050392 | 否 |
 | ad_copies | array | [] | 否 |
 | ad_copy | null |  | 是 |
-| ad_id | string | 120225644298550499 | 否 |
-| ad_image_url | string | https://storage.googleapis.com/file-hosting-bucket-shofifi/thumbnails/facebook-ads/act_447339210551911/297297039842891.jpg | 否 |
-| ad_title | string | Don't Miss Out on This Deal! 🔥 30% OFF the Piscifun Carbon X 🐟 Lightweight ✨ Smooth 💪 Powerful | 否 |
+| ad_id | string | 120241722115770738 | 否 |
+| ad_image_url | string | https://storage.googleapis.com/file-hosting-bucket-shofifi/thumbnails/facebook-ads/act_1225414248050392/2272713253220468.jpg | 否 |
+| ad_title | string | 5.3:1 Gear Ratio. Smooth Retrieve. | 否 |
 | ad_titles | array | [] | 否 |
 | ad_type | string | video | 否 |
-| asset_id | string | 297297039842891 | 否 |
+| asset_id | string | 2272713253220468 | 否 |
 | asset_type | string | video | 否 |
 | attribution_window | string | lifetime | 否 |
 | channel | string | facebook-ads | 否 |
@@ -767,53 +755,53 @@
 | channel_reported_onsite_conversion_value | number | 0 | 否 |
 | channel_reported_onsite_purchases | number | 0 | 否 |
 | channel_reported_visits | number | 0 | 否 |
-| clicks | number | 57 | 否 |
+| clicks | number | 87 | 否 |
 | cost_of_goods | number | 0 | 否 |
 | creative_cta_type | null |  | 是 |
 | creative_distribution_format | null |  | 是 |
 | creative_format | null |  | 是 |
-| creative_id | string | 1202936074964251 | 否 |
+| creative_id | string | 2840396992985728 | 否 |
 | destination_url | string |  | 否 |
-| event_date | string | 2026-04-07 | 否 |
-| gross_product_sales | number | 0 | 否 |
-| impressions | number | 2028 | 否 |
+| event_date | string | 2026-04-09 | 否 |
+| gross_product_sales | number | 144.98 | 否 |
+| impressions | number | 1714 | 否 |
 | meta_conversion_value | number | 0 | 否 |
 | meta_facebook_orders | number | 0 | 否 |
 | model | string | Triple Attribution | 否 |
 | new_customer_cogs | number | 0 | 否 |
-| new_customer_order_revenue | number | 0 | 否 |
-| new_customer_orders | number | 0 | 否 |
-| non_meta_facebook_orders | number | 0 | 否 |
+| new_customer_order_revenue | number | 65.80000305175781 | 否 |
+| new_customer_orders | number | 1 | 否 |
+| non_meta_facebook_orders | number | 2 | 否 |
 | non_tracked_spend | number | 0 | 否 |
 | number_of_ads | number | 1 | 否 |
-| one_day_view_conversion_value | number | 86.51000213623047 | 否 |
-| one_day_view_purchases | number | 1 | 否 |
-| order_revenue | number | 0 | 否 |
-| orders_quantity | number | 0 | 否 |
-| outbound_clicks | number | 20 | 否 |
+| one_day_view_conversion_value | number | 0 | 否 |
+| one_day_view_purchases | number | 0 | 否 |
+| order_revenue | number | 140.69000244140625 | 否 |
+| orders_quantity | number | 2 | 否 |
+| outbound_clicks | number | 46 | 否 |
 | seven_day_view_conversion_value | number | 0 | 否 |
 | seven_day_view_purchases | number | 0 | 否 |
-| shop_id | null |  | 是 |
-| shop_name | null |  | 是 |
-| spend | number | 14.050000190734863 | 否 |
-| three_second_video_view | number | 290 | 否 |
-| thruplays | number | 66 | 否 |
-| total_video_view | number | 1387 | 否 |
-| url_template | string | utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}&fbadid={{ad.id}} | 否 |
-| video_duration | number | 21 | 否 |
-| video_p100_watched | number | 39 | 否 |
-| video_p25_watched | number | 180 | 否 |
-| video_p50_watched | number | 102 | 否 |
-| video_p75_watched | number | 63 | 否 |
-| video_p95_watched | number | 42 | 否 |
-| video_url | string | https://files.triplewhale.com/videos/facebook-ads/act_447339210551911/297297039842891.mp4 | 否 |
-| website_purchases | number | 0 | 否 |
+| shop_id | string | piscifun.myshopify.com | 否 |
+| shop_name | string | piscifun | 否 |
+| spend | number | 16.389999389648438 | 否 |
+| three_second_video_view | number | 558 | 否 |
+| thruplays | number | 208 | 否 |
+| total_video_view | number | 1540 | 否 |
+| url_template | string | utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}&tw_source={{site_source_name}}&tw_adid={{ad.id}} | 否 |
+| video_duration | number | 31 | 否 |
+| video_p100_watched | number | 79 | 否 |
+| video_p25_watched | number | 315 | 否 |
+| video_p50_watched | number | 202 | 否 |
+| video_p75_watched | number | 141 | 否 |
+| video_p95_watched | number | 89 | 否 |
+| video_url | string | https://files.triplewhale.com/videos/facebook-ads/act_1225414248050392/2272713253220468.mp4 | 否 |
+| website_purchases | number | 2 | 否 |
 
 ---
 
 ## 接口：ai_visibility_table
 
-**生成时间：** 2026-04-08 16:12:07
+**生成时间：** 2026-04-10 11:45:13
 
 **样本记录数：** 0
 
@@ -826,13 +814,13 @@
 
 | 表名 | 日期列 | 最早数据日期 | 总行数 | Rate Limit (RPM) | 每次最大行数 | 全量拉取预估时长 |
 |------|--------|-------------|--------|-----------------|------------|----------------|
-| pixel_orders_table | created_at | 2022-03-21 08:12:15 | 346122 | 60 | 1000 | 5.78 min |
-| pixel_joined_tvf | event_date | 2021-12-05 | 340302 | 60 | 1000 | 5.68 min |
-| sessions_table | event_date | 2023-12-03 | 10678877 | 60 | 1000 | 177.98 min |
-| product_analytics_tvf | event_date | 2022-03-21 | 34786 | 60 | 1000 | 0.58 min |
-| pixel_keywords_joined_tvf | event_date | 2023-07-18 | 70558 | 60 | 1000 | 1.18 min |
-| ads_table | event_date | 2021-12-05 | 299878 | 60 | 1000 | 5.00 min |
-| social_media_comments_table | created_at | 2025-09-28 19:45:04 | 1926 | 60 | 1000 | 0.03 min |
-| social_media_pages_table | event_date | 2026-01-04 | 95 | 60 | 1000 | 0.02 min |
-| creatives_table | event_date | 2022-05-13 | 86277 | 60 | 1000 | 1.45 min |
+| pixel_orders_table | created_at | 2022-03-21 08:12:15 | 347459 | 60 | 1000 | 5.80 min |
+| pixel_joined_tvf | event_date | 2021-12-05 | 340853 | 60 | 1000 | 5.68 min |
+| sessions_table | event_date | 2023-12-03 | 10707719 | 60 | 1000 | 178.47 min |
+| product_analytics_tvf | event_date | 2022-03-21 | 34894 | 60 | 1000 | 0.58 min |
+| pixel_keywords_joined_tvf | event_date | 2023-07-18 | 70908 | 60 | 1000 | 1.18 min |
+| ads_table | event_date | 2021-12-05 | 300141 | 60 | 1000 | 5.02 min |
+| social_media_comments_table | created_at | 2025-09-28 19:45:04 | 1969 | 60 | 1000 | 0.03 min |
+| social_media_pages_table | event_date | 2026-01-04 | 97 | 60 | 1000 | 0.02 min |
+| creatives_table | event_date | 2022-05-13 | 86373 | 60 | 1000 | 1.45 min |
 | ai_visibility_table | event_date | 1970-01-01 | 0 | 60 | 1000 | - |
