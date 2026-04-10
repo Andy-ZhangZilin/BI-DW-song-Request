@@ -30,11 +30,16 @@ cp .env.example .env
 # 运行单个数据源验证
 python validate.py --source triplewhale
 python validate.py --source tiktok
-python validate.py --source dingtalk
+python validate.py --source dingtalk          # 全部 8 张多维表格
+python validate.py --source dingtalk_sheet    # 红人支付需求（普通表格）
 python validate.py --source youtube
 python validate.py --source awin
 python validate.py --source cartsee
 python validate.py --source partnerboost
+
+# 指定单张钉钉多维表格
+python validate.py --source dingtalk --table kol_tidwe_寄样记录
+python validate.py --source dingtalk --table outdoor_原始素材生产及优化
 
 # 运行全部数据源验证
 python validate.py --all
@@ -56,11 +61,31 @@ python validate.py --help
 |--------|---------|---------|
 | TripleWhale | REST API | `TRIPLEWHALE_API_KEY` |
 | TikTok Shop | REST API + refresh_token 自动换取 | `TIKTOK_REFRESH_TOKEN` / `TIKTOK_APP_KEY` / `TIKTOK_APP_SECRET` |
-| 钉钉多维表 | REST API | `DINGTALK_APP_KEY` / `DINGTALK_APP_SECRET` |
+| 钉钉多维表 | REST API（Notable API） | `DINGTALK_APP_KEY` / `DINGTALK_APP_SECRET` / `DINGTALK_OPERATOR_ID` |
+| 钉钉普通表格 | REST API（Workbook API） | `DINGTALK_APP_KEY` / `DINGTALK_APP_SECRET` / `DINGTALK_OPERATOR_ID` |
 | YouTube | REST API | `YOUTUBE_API_KEY` |
 | Awin | Playwright 爬虫 | `AWIN_USERNAME` / `AWIN_PASSWORD` |
 | CartSee | Playwright 爬虫 | `CARTSEE_USERNAME` / `CARTSEE_PASSWORD` |
 | PartnerBoost | Playwright 爬虫 | `PARTNERBOOST_USERNAME` / `PARTNERBOOST_PASSWORD` |
+
+### 钉钉多维表格（dingtalk）接入的 Sheet 清单
+
+| source key | 工作簿 | Base ID | Sheet 名称 |
+|------------|--------|---------|-----------|
+| `kol_tidwe_红人信息汇总` | KOL营销管理总表-TideWe | `Gl6Pm2Db8D332mAgCnk7N0AaJxLq0Ee4` | 红人信息汇总 |
+| `kol_tidwe_寄样记录` | KOL营销管理总表-TideWe | `Gl6Pm2Db8D332mAgCnk7N0AaJxLq0Ee4` | 寄样记录 |
+| `kol_tidwe_内容上线` | KOL营销管理总表-TideWe | `Gl6Pm2Db8D332mAgCnk7N0AaJxLq0Ee4` | 内容上线 |
+| `outdoor_原始素材生产及优化` | 26年新版-大户外一张表3.0 | `Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l` | 原始素材生产及优化 |
+| `outdoor_拍摄资源表KOL信息` | 26年新版-大户外一张表3.0 | `Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l` | 拍摄资源表-KOL信息 |
+| `outdoor_素材分析表格` | 26年新版-大户外一张表3.0 | `Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l` | 素材分析表格 |
+| `outdoor_参数表` | 26年新版-大户外一张表3.0 | `Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l` | 参数表\|勿动 |
+| `video_成片交付` | 视频组日常工作总表 | `20eMKjyp81RR5NAQC79gy2YEWxAZB1Gv` | 视频组成片交付&数据汇总表 |
+
+### 钉钉普通表格（dingtalk_sheet）接入的工作簿清单
+
+| source | 工作簿名称 | Workbook ID |
+|--------|-----------|-------------|
+| `dingtalk_sheet` | 红人支付需求 | `XPwkYGxZV3RRlXAQCjaPjk6zWAgozOKL` |
 
 ## 运行测试
 

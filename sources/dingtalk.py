@@ -8,10 +8,26 @@
 凭证要求（.env）：
     DINGTALK_APP_KEY          企业内部应用 AppKey
     DINGTALK_APP_SECRET       企业内部应用 AppSecret
-    DINGTALK_WORKBOOK_ID      多维表格 BaseId（文档唯一标识）
     DINGTALK_OPERATOR_ID      操作者 unionId（必填，用于 notable API 鉴权）
-    DINGTALK_SHEET_ID         （可选）指定 Sheet ID；未配置时按名称或取第一个
-    DINGTALK_SHEET_NAME       （可选）指定 Sheet 名称，如"红人信息汇总"
+
+TABLES 字典格式：{table_key: (base_id, sheet_name)}
+    base_id:    多维表格的 BaseId（文档唯一标识）
+    sheet_name: 多维表格中的 Sheet 名称
+
+支持的表（共 8 张）：
+    KOL营销管理总表-TideWe (Gl6Pm2Db8D332mAgCnk7N0AaJxLq0Ee4)：
+        kol_tidwe_红人信息汇总  → 红人信息汇总
+        kol_tidwe_寄样记录     → 寄样记录
+        kol_tidwe_内容上线     → 内容上线
+
+    26年新版-大户外一张表3.0 (Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l)：
+        outdoor_原始素材生产及优化   → 原始素材生产及优化
+        outdoor_拍摄资源表KOL信息   → 拍摄资源表-KOL信息
+        outdoor_素材分析表格        → 素材分析表格
+        outdoor_参数表             → 参数表|勿动
+
+    视频组日常工作总表 (20eMKjyp81RR5NAQC79gy2YEWxAZB1Gv)：
+        video_成片交付             → 视频组成片交付&数据汇总表
 """
 import logging
 import time
@@ -28,11 +44,28 @@ SOURCE_NAME = "dingtalk"
 _cached_token: str | None = None
 _token_expiry: float = 0.0
 
-# /fields 接口返回的官方列顺序（fetch_sample 调用后填充，供 extract_fields 排序用）
-_field_order: list[str] = []
+# /fields 接口返回的官方列顺序（按 table_name 缓存）
+_field_order_cache: dict[str, list[str]] = {}
 
 _TOKEN_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
 _NOTABLE_BASE = "https://api.dingtalk.com/v1.0/notable/bases"
+
+# ---------------------------------------------------------------------------
+# 多维表格注册表：{table_key: (base_id, sheet_name)}
+# ---------------------------------------------------------------------------
+TABLES: dict[str, tuple[str, str]] = {
+    # KOL营销管理总表-TideWe
+    "kol_tidwe_红人信息汇总":  ("Gl6Pm2Db8D332mAgCnk7N0AaJxLq0Ee4", "红人信息汇总"),
+    "kol_tidwe_寄样记录":      ("Gl6Pm2Db8D332mAgCnk7N0AaJxLq0Ee4", "寄样记录"),
+    "kol_tidwe_内容上线":      ("Gl6Pm2Db8D332mAgCnk7N0AaJxLq0Ee4", "内容上线"),
+    # 26年新版-大户外一张表3.0-原始素材+产品信息
+    "outdoor_原始素材生产及优化": ("Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l", "原始素材生产及优化"),
+    "outdoor_拍摄资源表KOL信息":  ("Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l", "拍摄资源表-KOL信息"),
+    "outdoor_素材分析表格":       ("Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l", "素材分析表格"),
+    "outdoor_参数表":             ("Qnp9zOoBVBZZXzArF0nlpBn0V1DK0g6l", "参数表|勿动"),
+    # 视频组日常工作总表
+    "video_成片交付": ("20eMKjyp81RR5NAQC79gy2YEWxAZB1Gv", "视频组成片交付&数据汇总表"),
+}
 
 
 def _load_token() -> str:
@@ -94,23 +127,65 @@ def authenticate() -> bool:
         return False
 
 
+def _resolve_sheet_id(base_id: str, sheet_name: str, headers: dict, params_base: dict) -> str:
+    """根据 sheet_name 查找对应的 sheet_id。
+
+    Args:
+        base_id:    多维表格 BaseId
+        sheet_name: Sheet 名称
+        headers:    HTTP 请求头（含 token）
+        params_base: 公共查询参数（含 operatorId）
+
+    Returns:
+        sheet_id 字符串
+
+    Raises:
+        RuntimeError: 未找到对应 sheet 时抛出
+    """
+    resp = requests.get(
+        f"{_NOTABLE_BASE}/{base_id}/sheets",
+        headers=headers, params=params_base, timeout=30,
+    )
+    resp.raise_for_status()
+    sheets = resp.json().get("value", [])
+    if not sheets:
+        raise RuntimeError(f"[{SOURCE_NAME}] base {base_id} 中未找到任何 Sheet")
+    matched = next((s for s in sheets if s.get("name") == sheet_name), None)
+    if not matched:
+        available = [s.get("name") for s in sheets]
+        raise RuntimeError(
+            f"[{SOURCE_NAME}] base {base_id} 中未找到名称为 '{sheet_name}' 的 Sheet，"
+            f"可用 Sheet：{available}"
+        )
+    return matched["id"]
+
+
 def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     """从钉钉多维表格拉取全量记录并归一化为扁平字典列表。
 
     使用 notable API（/v1.0/notable/bases/...）分页拉取，
     自动解析复合字段值（URL / 单选 / 多选 / 人员等）。
-    同时调用 /fields 接口获取官方列顺序，存入模块变量供 extract_fields 使用。
+    同时调用 /fields 接口获取官方列顺序，存入模块缓存供 extract_fields 使用。
 
     Args:
-        table_name: 未使用，保留以对齐公共接口签名。
+        table_name: TABLES 中的 key（如 "kol_tidwe_红人信息汇总"）。
+                    为 None 时取 TABLES 第一个条目。
 
     Returns:
         记录列表，每条记录为 {列名: 标量值} 的字典。空表返回 []。
     """
-    global _field_order
+    if table_name is None:
+        table_name = next(iter(TABLES))
+
+    if table_name not in TABLES:
+        raise ValueError(
+            f"[{SOURCE_NAME}] 未知 table_name '{table_name}'，"
+            f"可选值：{list(TABLES.keys())}"
+        )
+
+    base_id, sheet_name = TABLES[table_name]
+
     token = _load_token()
-    creds = _creds_module.get_credentials()
-    base_id = creds["DINGTALK_WORKBOOK_ID"]
     operator_id = _creds_module.get_optional_config("DINGTALK_OPERATOR_ID")
     if not operator_id:
         raise RuntimeError(
@@ -120,25 +195,8 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     headers = {"x-acs-dingtalk-access-token": token}
     params_base = {"operatorId": operator_id}
 
-    # 确定 sheet_id：优先显式配置，次之按名称查找，最后取第一个
-    sheet_id = _creds_module.get_optional_config("DINGTALK_SHEET_ID", "")
-    if not sheet_id:
-        sheet_name = _creds_module.get_optional_config("DINGTALK_SHEET_NAME", "")
-        resp = requests.get(
-            f"{_NOTABLE_BASE}/{base_id}/sheets",
-            headers=headers, params=params_base, timeout=30,
-        )
-        resp.raise_for_status()
-        sheets = resp.json().get("value", [])
-        if not sheets:
-            raise RuntimeError(f"[{SOURCE_NAME}] base {base_id} 中未找到任何 Sheet")
-        if sheet_name:
-            matched = next((s for s in sheets if s.get("name") == sheet_name), None)
-            if not matched:
-                raise RuntimeError(f"[{SOURCE_NAME}] 未找到名称为 '{sheet_name}' 的 Sheet")
-            sheet_id = matched["id"]
-        else:
-            sheet_id = sheets[0]["id"]
+    # 通过 sheet_name 查找 sheet_id
+    sheet_id = _resolve_sheet_id(base_id, sheet_name, headers, params_base)
 
     # 拉取 /fields 获取官方列顺序（失败不阻断主流程）
     try:
@@ -147,11 +205,15 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
             headers=headers, params=params_base, timeout=30,
         )
         resp_fields.raise_for_status()
-        _field_order = [f["name"] for f in resp_fields.json().get("value", [])]
-        logger.debug(f"[{SOURCE_NAME}] 获取到 {len(_field_order)} 个字段顺序定义")
+        _field_order_cache[table_name] = [
+            f["name"] for f in resp_fields.json().get("value", [])
+        ]
+        logger.debug(
+            f"[{SOURCE_NAME}] {table_name}: 获取到 {len(_field_order_cache[table_name])} 个字段顺序定义"
+        )
     except Exception as fe:
-        logger.warning(f"[{SOURCE_NAME}] 获取字段顺序失败，将按记录顺序输出：{fe}")
-        _field_order = []
+        logger.warning(f"[{SOURCE_NAME}] {table_name}: 获取字段顺序失败，将按记录顺序输出：{fe}")
+        _field_order_cache[table_name] = []
 
     # 分页拉取全量记录
     all_records: list[dict] = []
@@ -177,17 +239,21 @@ def fetch_sample(table_name: Optional[str] = None) -> list[dict]:
     return all_records
 
 
-def extract_fields(sample: list[dict]) -> list[dict]:
+def extract_fields(sample: list[dict], table_name: Optional[str] = None) -> list[dict]:
     """从样本数据中提取字段描述列表（FieldInfo 标准四键结构）。
 
     Args:
-        sample: fetch_sample() 返回的记录列表。
+        sample:     fetch_sample() 返回的记录列表。
+        table_name: TABLES 中的 key，用于读取对应的字段顺序缓存。
+                    为 None 时跳过顺序排序。
 
     Returns:
         字段描述列表，每条含 field_name / data_type / sample_value / nullable。
     """
     if not sample:
         return []
+
+    field_order = _field_order_cache.get(table_name, []) if table_name else []
 
     # 保序去重收集所有列名（来自记录数据）
     record_keys: list[str] = []
@@ -199,9 +265,9 @@ def extract_fields(sample: list[dict]) -> list[dict]:
                 seen.add(key)
 
     # 按 /fields 官方顺序排列；records 中有但 /fields 没有的列追加到末尾
-    if _field_order:
-        ordered = [k for k in _field_order if k in seen]
-        tail = [k for k in record_keys if k not in set(_field_order)]
+    if field_order:
+        ordered = [k for k in field_order if k in seen]
+        tail = [k for k in record_keys if k not in set(field_order)]
         all_keys = ordered + tail
     else:
         all_keys = record_keys

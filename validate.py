@@ -31,16 +31,17 @@ logger = logging.getLogger(__name__)
 # social_media 是 stub，--all 时也纳入（调度器统一捕获 NotImplementedError）
 # ---------------------------------------------------------------------------
 SOURCES: Dict[str, str] = {
-    "triplewhale":  "sources.triplewhale",
-    "tiktok":       "sources.tiktok",
-    "dingtalk":     "sources.dingtalk",
-    "youtube":      "sources.youtube",
-    "youtube_url":  "sources.youtube_url",
-    "awin":         "sources.awin",
-    "cartsee":      "sources.cartsee",
-    "partnerboost": "sources.partnerboost",
-    "social_media":    "sources.social_media",
-    "youtube_studio":  "sources.youtube_studio",
+    "triplewhale":    "sources.triplewhale",
+    "tiktok":         "sources.tiktok",
+    "dingtalk":       "sources.dingtalk",
+    "dingtalk_sheet": "sources.dingtalk_sheet",
+    "youtube":        "sources.youtube",
+    "youtube_url":    "sources.youtube_url",
+    "awin":           "sources.awin",
+    "cartsee":        "sources.cartsee",
+    "partnerboost":   "sources.partnerboost",
+    "social_media":   "sources.social_media",
+    "youtube_studio": "sources.youtube_studio",
 }
 
 
@@ -132,6 +133,28 @@ def _run_source(source_name: str, module_path: str, table: Optional[str] = None)
                     logger.info(f"[{source_name}] {table_name} ... 完成")
                 except Exception as table_err:
                     logger.error(f"[{source_name}] {table_name} 失败，跳过：{table_err}")
+        elif source_name == "dingtalk":
+            # dingtalk 多维表格多 Sheet 路由：按 TABLES 逐张抓取，单表异常不中断整体
+            tables = [table] if table else list(module.TABLES.keys())
+            if not tables:
+                logger.warning(f"[{source_name}] TABLES 为空，跳过")
+                result["status"] = "TABLES 为空"
+                result["error"] = "module.TABLES 为空字典"
+                return result
+            written = 0
+            for table_name in tables:
+                logger.info(f"[{source_name}] 获取 {table_name} 样本 ...")
+                try:
+                    sample = module.fetch_sample(table_name)
+                    fields = module.extract_fields(sample, table_name)
+                    reporter.write_raw_report(
+                        source_name, fields, table_name, len(sample), append=(written > 0)
+                    )
+                    result["fields"][table_name] = fields
+                    written += 1
+                    logger.info(f"[{source_name}] {table_name} ... 完成")
+                except Exception as table_err:
+                    logger.error(f"[{source_name}] {table_name} 失败，跳过：{table_err}")
         else:
             logger.info(f"[{source_name}] 获取样本 ...")
             sample = module.fetch_sample()
@@ -188,8 +211,9 @@ def main() -> None:
         metavar="TABLE",
         default=None,
         help=(
-            "指定数据表名，仅对 triplewhale 和 tiktok 有效。"
+            "指定数据表名，仅对 triplewhale、tiktok 和 dingtalk 有效。"
             "例：--source tiktok --table return_refund"
+            "  --source dingtalk --table kol_tidwe_寄样记录"
         ),
     )
     parser.add_argument(

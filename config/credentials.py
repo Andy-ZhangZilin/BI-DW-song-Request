@@ -20,7 +20,6 @@ _REQUIRED_KEYS: List[str] = [
     "TIKTOK_APP_SECRET",
     "DINGTALK_APP_KEY",
     "DINGTALK_APP_SECRET",
-    "DINGTALK_WORKBOOK_ID",
     "YOUTUBE_API_KEY",
     "AWIN_API_TOKEN",
     "AWIN_ADVERTISER_ID",
@@ -38,7 +37,10 @@ _REQUIRED_KEYS: List[str] = [
 _SOURCE_CREDENTIALS: Dict[str, List[str]] = {
     "triplewhale": ["TRIPLEWHALE_API_KEY"],
     "tiktok": ["TIKTOK_APP_KEY", "TIKTOK_APP_SECRET"],
-    "dingtalk": ["DINGTALK_APP_KEY", "DINGTALK_APP_SECRET", "DINGTALK_WORKBOOK_ID"],
+    # 钉钉多维表格（workbook IDs 已内置于 sources/dingtalk.py TABLES 中）
+    "dingtalk": ["DINGTALK_APP_KEY", "DINGTALK_APP_SECRET"],
+    # 钉钉普通表格（workbook ID 已内置于 sources/dingtalk_sheet.py 中）
+    "dingtalk_sheet": ["DINGTALK_APP_KEY", "DINGTALK_APP_SECRET"],
     "youtube": ["YOUTUBE_API_KEY"],
     "youtube_url": ["YOUTUBE_API_KEY"],
     "awin": ["AWIN_API_TOKEN", "AWIN_ADVERTISER_ID"],
