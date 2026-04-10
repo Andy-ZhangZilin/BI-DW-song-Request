@@ -38,6 +38,9 @@ SAMPLE_YAML = textwrap.dedent("""\
           - 日期
           - 曝光量
           - 花费
+        source_hints:
+          - "DTC 流量/订单量：均来自 TW pixel_joined_tvf()"
+          - "DTC-硬广 曝光量：TW"
 """)
 
 SAMPLE_FIELDS = [
@@ -296,6 +299,12 @@ class TestWriteAggregateReport:
         content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
         assert "source_b" in content
         assert "source_a" not in content
+
+    def test_aggregate_contains_part3_source_hints(self, tmp_reports):
+        """Part 3 渲染 source_hints 数据来源提示。"""
+        reporter.write_aggregate_report(self._make_source_results())
+        content = (tmp_reports / "all-sources-aggregate.md").read_text(encoding="utf-8")
+        assert "数据来源提示" in content
 
     def test_aggregate_failed_source_no_fields(self, tmp_reports):
         """失败的数据源在 Part 2 中标注无字段数据。"""

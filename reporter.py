@@ -368,6 +368,7 @@ def _render_aggregate_part3() -> List[str]:
         launch = report.get("launch_date", "")
         notes = report.get("notes", "")
         fields = report.get("fields") or []
+        source_hints = report.get("source_hints") or []
 
         lines += [
             f"### 报表 {i}：{name}",
@@ -389,6 +390,15 @@ def _render_aggregate_part3() -> List[str]:
         for field_name in fields:
             lines.append(f"| {_escape_cell(field_name)} | | | 待分析 | |")
         lines.append("")
+
+        if source_hints:
+            lines += [
+                "**数据来源提示：**",
+                "",
+            ]
+            for hint in source_hints:
+                lines.append(f"- {_escape_cell(hint)}")
+            lines.append("")
     return lines
 
 

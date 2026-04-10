@@ -2,12 +2,13 @@
 # 11 张数据表需求定义 — 用于聚合结论文档的 AI 分析提示语生成
 #
 # 结构说明：
-#   report_name: 报表中文名称
-#   dashboard:   所属报表/仪表盘
-#   deadline:    需求时间
-#   launch_date: 报表上线时间
-#   notes:       业务备注
-#   fields:      字段列表（报表需要的列名）
+#   report_name:   报表中文名称
+#   dashboard:     所属报表/仪表盘
+#   deadline:      需求时间
+#   launch_date:   报表上线时间
+#   notes:         业务备注
+#   fields:        字段列表（报表需要的列名）
+#   source_hints:  数据来源提示列表（帮助 AI 进行字段映射的上下文信息）
 #
 # 此文件是纯配置，修改后无需改动任何 Python 代码。
 # reporter.py 读取本文件生成聚合文档中的 11 张报表字段映射模板和 AI 分析提示语。
@@ -33,7 +34,7 @@ reports:
     dashboard: 销售表现、利润表
     deadline: "2026-04-08"
     launch_date: "2026-04-24"
-    notes: 财务科目级别关系主数据，可能需要财务提供（更新较少，变动需手动更新）
+    notes: 财务科目级别关系主数据，可能需要财务提供（更新较少，变动需手动更新）；或使用四级科目作为主键
     fields:
       - 项ID
       - 科目名称
@@ -48,7 +49,7 @@ reports:
     dashboard: 营销推广-渠道效果
     deadline: "2026-04-20"
     launch_date: "2026-05-18"
-    notes: 营销归因数据，需要按营销的归因逻辑进行归因处理
+    notes: 营销归因数据，需要按营销的归因逻辑进行归因处理；维度需要到日维度；涉及花费部分获取到的数据全量入表
     fields:
       - 日期
       - 店铺
@@ -61,6 +62,20 @@ reports:
       - 销售额
       - 花费
       - 新客数
+    source_hints:
+      - "渠道分类：DTC（硬广/KOL/联盟/EDM/SEO/TikTok/社媒）、TikTok（店铺/达人）"
+      - "DTC 流量/订单量/销量/销售额/新客数：均来自 TW pixel_joined_tvf()"
+      - "DTC-硬广 曝光量：TW；花费（信息流广告）：TW"
+      - "DTC-KOL 曝光量：KOL内容URL播放数；花费分效果侧/品牌侧（合思费控-红人支付表+红人信息表）+样品费（OMS发货单-寄样单头采尾）"
+      - "DTC-联盟 曝光量：Awin展现量 + PartnerBoost展现量；花费：合思费控-联盟"
+      - "DTC-EDM 曝光量：cartsee打开数；花费：合思费控"
+      - "DTC-SEO 曝光量：无；花费：合思费控"
+      - "DTC-TikTok 曝光量：video_performances播放数；花费（信息流广告）：平台广告花费（导流到独立站）"
+      - "DTC-社媒 曝光量：youtube/Instagram/TK/FB曝光量；花费：无"
+      - "TikTok-店铺：TikTok API-商品表现；花费（信息流广告）：目前暂只有店铺后台导出；新客数：无"
+      - "TikTok-达人：video_performances（播放数/点击率/订单量/销量/GMV）；佣金从TK联盟履约状态获取；样品费从LX平台订单或TK寄样单获取；新客数：无"
+      - "TW 归因说明：业务人员提供归因方式（适用TW的一套SQL），需辅助输入1-2张表（业务维护）取各渠道归因关键词范围"
+      - "相关 TW 表：pixel_joined_tvf()、Pixel_order_table、sessions_table"
 
   - report_name: DTC广告投放数据
     dashboard: 营销推广-广告投放
@@ -82,12 +97,16 @@ reports:
       - 销售额
       - 花费
       - 新客数
+    source_hints:
+      - "全部数据可从 TW pixel_joined_tvf() 获取"
+      - "查询示例：FROM pixel_joined_tvf() WHERE channel='facebook-ads' AND model='Linear All' AND attribution_window='lifetime' AND NOT (ad_name IS NULL) AND ad_name <> ''"
+      - "活动/广告组/广告字段需包含 id 和名称"
 
   - report_name: KOL信息表
     dashboard: 营销推广-KOL效果
     deadline: "2026-05-15"
     launch_date: "2026-06-12"
-    notes: 钉钉多维表数据源
+    notes: 钉钉多维表数据源；三张源表字段有不同（尤其TK达人信息），缺失字段忽略
     fields:
       - 红人ID
       - 红人类型
@@ -109,6 +128,19 @@ reports:
       - UTM短链
       - 原UTM
       - Email
+      - 其他联系方式
+      - 备注
+      - 全名
+      - 寄样地址
+      - 收款信息
+      - 合作日期
+      - 合作产品
+      - 内容发布
+    source_hints:
+      - "数据源1：KOL营销管理总表-TideWe → 红人信息汇总"
+      - "数据源2：KOL营销管理总表-Piscifun → 红人信息汇总"
+      - "数据源3：TikTok达人合作管理总表-TideWe → 达人信息汇总"
+      - "三张表字段有不同，尤其TK达人信息表，缺失的字段忽略"
 
   - report_name: KOL内容表现表
     dashboard: 营销推广-KOL效果
@@ -124,6 +156,13 @@ reports:
       - 评论数
       - GMV
       - 新客数
+    source_hints:
+      - "数据源1：KOL营销管理总表-TideWe → 红人信息汇总"
+      - "数据源2：KOL营销管理总表-Piscifun → 红人信息汇总"
+      - "数据源3：TikTok达人合作管理总表-TideWe → 达人信息汇总"
+      - "KOL GMV：通过折扣码识别订单及对应GMV（TW Pixel_order_table）"
+      - "TikTok：video_performances 的 ID 对应达人信息表 url 中的 ID 实现关联，无点赞/评论数"
+      - "点赞数、评论数若获取不到便放弃"
 
   - report_name: KOL/达人合作效果表
     dashboard: 营销推广-KOL效果、营销推广-TikTok销售
@@ -146,6 +185,10 @@ reports:
       - 销量
       - 销售额
       - 新客数
+    source_hints:
+      - "数据源1：KOL营销管理总表-TideWe → 寄样记录"
+      - "数据源2：KOL营销管理总表-Piscifun → 寄样记录"
+      - "数据源3：TikTok达人合作管理总表-TideWe → 寄样记录"
 
   - report_name: TikTok销售分类表
     dashboard: 营销推广-TikTok销售
@@ -164,6 +207,9 @@ reports:
       - 销量
       - 销售额
       - 新客数
+    source_hints:
+      - "非视频（直播/商品卡）：TikTok API-商品表现表"
+      - "视频：视频ID+达人来自 /analytics/{period}/shop_videos/{video_id}/performance 接口，关联TK达人合作表"
 
   - report_name: 产品营销表现表
     dashboard: 营销推广-产品级明细
@@ -185,10 +231,16 @@ reports:
       - 新客销量
       - 新客销售额
       - 新客数
+    source_hints:
+      - "现无确切数据来源可完成产品×渠道维度的完整汇总"
+      - "product_analytics_tvf()：只到产品级数据（无渠道维度）"
+      - "pixel_joined_tvf()：只到渠道级（无产品维度）"
+      - "Pixel_order_table：有渠道+产品的订单相关数据，但没有展现量和流量"
+      - "需要组合多个表或接受维度缺失"
 
   - report_name: 社媒账号信息
     dashboard: ""
-    deadline: "非一期需求"
+    deadline: "非本期需求，但需要展现量（关联社媒发布内容信息表）"
     launch_date: "2026-05-18"
     notes: youtube、Instagram、TikTok、Facebook 账号的粉丝、曝光、点赞、评论、转发；可能需要抓取或接入平台接口
     fields:
@@ -200,7 +252,7 @@ reports:
 
   - report_name: 社媒发布内容信息
     dashboard: ""
-    deadline: "非一期需求"
+    deadline: "非本期需求，但需要展现量"
     launch_date: "2026-05-18"
     notes: 可能需要抓取，或接入平台接口
     fields:

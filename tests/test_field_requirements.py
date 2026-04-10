@@ -89,6 +89,28 @@ def test_fields_are_strings():
                 f"报表 {report['report_name']} 的字段 {field} 应为字符串"
 
 
+def test_source_hints_are_list_of_strings():
+    """source_hints（若存在）应为字符串列表。"""
+    data = _load()
+    for report in data["reports"]:
+        hints = report.get("source_hints")
+        if hints is not None:
+            assert isinstance(hints, list), \
+                f"报表 {report['report_name']} 的 source_hints 应为列表"
+            for hint in hints:
+                assert isinstance(hint, str), \
+                    f"报表 {report['report_name']} 的 source_hints 项应为字符串"
+
+
+def test_kol_info_has_extended_fields():
+    """KOL信息表应包含扩展字段（>=28 个）。"""
+    data = _load()
+    kol = [r for r in data["reports"] if r["report_name"] == "KOL信息表"]
+    assert len(kol) == 1
+    assert len(kol[0]["fields"]) >= 28, \
+        f"KOL信息表应有 >=28 个字段，实际 {len(kol[0]['fields'])} 个"
+
+
 # ---------------------------------------------------------------------------
 # AC2 — 热更新验证
 # ---------------------------------------------------------------------------
