@@ -184,7 +184,7 @@ class TestSingleSource:
         assert exc_info.value.code == 1
 
     def test_single_source_no_aggregate(self) -> None:
-        """--source 模式不生成聚合文档。"""
+        """--source 模式不生成聚合文档（不调用 write_aggregate_report）。"""
         mock_modules = _make_mock_modules()
         with (
             patch("sys.argv", ["validate.py", "--source", "youtube"]),
@@ -197,6 +197,23 @@ class TestSingleSource:
             validate.main()
 
         mock_reporter.write_aggregate_report.assert_not_called()
+
+    def test_single_source_calls_update_aggregate(self) -> None:
+        """--source 模式成功后调用 update_aggregate_source 更新聚合文档。"""
+        mock_modules = _make_mock_modules()
+        with (
+            patch("sys.argv", ["validate.py", "--source", "youtube_url"]),
+            patch("validate.get_credentials", return_value={}),
+            patch("validate.reporter") as mock_reporter,
+            patch("validate.importlib.import_module", side_effect=_make_import_patcher(mock_modules)),
+            pytest.raises(SystemExit),
+        ):
+            import validate
+            validate.main()
+
+        mock_reporter.update_aggregate_source.assert_called_once()
+        call_args = mock_reporter.update_aggregate_source.call_args
+        assert call_args[0][0] == "youtube_url"
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +284,9 @@ class TestAggregateReport:
 
 class TestFailureIsolation:
 
-    def test_fetch_exception_does_not_stop_others(self) -> None:
+    def test_fetch_exception_does_not_stop_others(self, tmp_path, monkeypatch) -> None:
+        # 切换到空目录，确保无历史 raw 文件触发回退逻辑
+        monkeypatch.chdir(tmp_path)
         mock_modules = _make_mock_modules(
             override={"dingtalk": _make_mock_source(fetch_exception=RuntimeError("网络超时"))}
         )
@@ -286,7 +305,9 @@ class TestFailureIsolation:
             mock_modules[REAL_SOURCES[name]].authenticate.assert_called_once(), \
                 f"{name} 应在 dingtalk 失败后继续被调用"
 
-    def test_authenticate_false_marks_source_failed(self) -> None:
+    def test_authenticate_false_marks_source_failed(self, tmp_path, monkeypatch) -> None:
+        # 切换到空目录，确保无历史 raw 文件触发回退逻辑
+        monkeypatch.chdir(tmp_path)
         mock_modules = _make_mock_modules(
             override={"youtube": _make_mock_source(auth_result=False)}
         )
@@ -361,6 +382,76 @@ class TestSocialMediaStub:
         assert exc_info.value.code == 1
         mock_modules["sources.triplewhale"].authenticate.assert_called_once()
         mock_modules["sources.social_media"].authenticate.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 优化2 — --all 模式下失败时检查历史 raw 文件
+# ---------------------------------------------------------------------------
+
+class TestRawFileFallback:
+
+    def test_failed_source_with_raw_file_marked_success(self, tmp_path, monkeypatch) -> None:
+        """--all 模式下，source 失败但存在历史 raw 文件时，采集状态标记为已生成（历史数据）。"""
+        # validate.py 用 Path("reports")/{source}-raw.md 检查文件；切换工作目录并预置文件
+        reports = tmp_path / "reports"
+        reports.mkdir()
+        (reports / "dingtalk-raw.md").write_text("# dingtalk raw", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        mock_modules = _make_mock_modules(
+            override={"dingtalk": _make_mock_source(auth_result=False)}
+        )
+        with (
+            patch("sys.argv", ["validate.py", "--all"]),
+            patch("validate.get_credentials", return_value={}),
+            patch("validate.reporter"),
+            patch("validate.importlib.import_module", side_effect=_make_import_patcher(mock_modules)),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            import validate
+            validate.main()
+
+        # dingtalk 失败但有 raw 文件，整体 exit 应为 0
+        assert exc_info.value.code == 0
+
+    def test_failed_source_without_raw_file_stays_failed(self, tmp_path, monkeypatch) -> None:
+        """--all 模式下，source 失败且无历史 raw 文件时，采集状态仍为失败，退出码 1。"""
+        reports = tmp_path / "reports"
+        reports.mkdir()
+        # 不创建 dingtalk-raw.md
+        monkeypatch.chdir(tmp_path)
+
+        mock_modules = _make_mock_modules(
+            override={"dingtalk": _make_mock_source(auth_result=False)}
+        )
+        with (
+            patch("sys.argv", ["validate.py", "--all"]),
+            patch("validate.get_credentials", return_value={}),
+            patch("validate.reporter"),
+            patch("validate.importlib.import_module", side_effect=_make_import_patcher(mock_modules)),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            import validate
+            validate.main()
+
+        assert exc_info.value.code == 1
+
+    def test_single_source_no_raw_fallback(self) -> None:
+        """--source 模式下，失败时不检查历史 raw 文件（该优化仅针对 --all）。"""
+        mock_modules = _make_mock_modules(
+            override={"youtube_url": _make_mock_source(auth_result=False)}
+        )
+        with (
+            patch("sys.argv", ["validate.py", "--source", "youtube_url"]),
+            patch("validate.get_credentials", return_value={}),
+            patch("validate.reporter"),
+            patch("validate.importlib.import_module", side_effect=_make_import_patcher(mock_modules)),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            import validate
+            validate.main()
+
+        assert exc_info.value.code == 1
 
 
 # ---------------------------------------------------------------------------

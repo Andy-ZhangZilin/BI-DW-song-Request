@@ -247,6 +247,118 @@ def write_triplewhale_data_profile(profiles: List[Dict]) -> None:
     logger.info(f"[reporter] triplewhale 数据概况已追加到 {path}")
 
 
+def _build_source_rows_part1(source_name: str, result: Dict) -> List[str]:
+    """为单个数据源构建 Part 1 表格行列表（逻辑与 _render_aggregate_part1 对应）。"""
+    meta = SOURCE_META.get(source_name, {})
+    category = _escape_cell(meta.get("category", source_name))
+    display_name = _escape_cell(meta.get("display_name", source_name))
+    status_raw = result.get("status", "未知")
+    error = _escape_cell(result.get("error")) or ""
+    fields_dict = result.get("fields", {})
+    rows: List[str] = []
+    if fields_dict:
+        for table_name, field_list in fields_dict.items():
+            table_display = _escape_cell(table_name) if table_name else "—"
+            count = len(field_list)
+            status = _escape_cell(status_raw) if count > 0 else "采集失败"
+            rows.append(f"| {category} | {display_name} | {table_display} | {status} | {count} | {error} |")
+    else:
+        status = _escape_cell(status_raw)
+        rows.append(f"| {category} | {display_name} | — | {status} | 0 | {error} |")
+    return rows
+
+
+def _build_source_row_part2(source_name: str, result: Dict) -> str:
+    """为单个数据源构建 Part 2 表格行（逻辑与 _render_aggregate_part2 对应）。"""
+    meta = SOURCE_META.get(source_name, {})
+    category = _escape_cell(meta.get("category", source_name))
+    display_name = _escape_cell(meta.get("display_name", source_name))
+    status = _escape_cell(result.get("status", "未知"))
+    fields_dict = result.get("fields", {})
+    total_fields = sum(len(fl) for fl in fields_dict.values()) if fields_dict else 0
+    raw_path = f"`reports/{source_name}-raw.md`" if total_fields > 0 else "—"
+    return f"| {category} | {display_name} | {raw_path} | {status} | {total_fields} |"
+
+
+def _is_table_row_for_source(line: str, display_name: str) -> bool:
+    """判断 Markdown 表格行是否属于指定数据源（按 display_name 列匹配）。
+
+    Part 1 格式：| category | display_name | table | status | count | error |
+    Part 2 格式：| category | display_name | raw_path | status | total_fields |
+    cells[0] 为空（首个 | 前），cells[1] 为 category，cells[2] 为 display_name。
+    """
+    if not line.startswith("|"):
+        return False
+    cells = [c.strip() for c in line.split("|")]
+    return len(cells) > 2 and cells[2] == _escape_cell(display_name)
+
+
+def update_aggregate_source(source_name: str, result: Dict) -> None:
+    """更新 reports/all-sources-aggregate.md 中指定数据源的行。
+
+    在 --source 单源运行模式下调用，仅更新 Part 1 和 Part 2 中该数据源的行，
+    保留 Part 3 和 Part 4（含人工填写内容）不变。
+
+    若聚合文档不存在，记录警告并跳过（需先运行 --all 生成聚合文档）。
+
+    Args:
+        source_name: 数据源名称（SOURCES 注册表 key）。
+        result: _run_source 返回的结果字典。
+    """
+    _ensure_reports_dir()
+    path = REPORTS_DIR / "all-sources-aggregate.md"
+    if not path.exists():
+        logger.warning(
+            f"[reporter] 聚合文档不存在，跳过更新（{source_name}）。请先运行 --all 生成聚合文档。"
+        )
+        return
+
+    meta = SOURCE_META.get(source_name, {})
+    display_name = meta.get("display_name", source_name)
+
+    new_part1_rows = _build_source_rows_part1(source_name, result)
+    new_part2_row = _build_source_row_part2(source_name, result)
+
+    lines = path.read_text(encoding="utf-8").split("\n")
+    output: List[str] = []
+    in_part1 = False
+    in_part2 = False
+    part1_replaced = False
+    part2_replaced = False
+
+    for line in lines:
+        if line.startswith("## Part 1"):
+            in_part1 = True
+            in_part2 = False
+        elif line.startswith("## Part 2"):
+            in_part1 = False
+            in_part2 = True
+        elif line.startswith("## Part 3") or line.startswith("## Part 4"):
+            in_part1 = False
+            in_part2 = False
+
+        if in_part1 and _is_table_row_for_source(line, display_name):
+            if not part1_replaced:
+                output.extend(new_part1_rows)
+                part1_replaced = True
+            continue  # 跳过旧行（已被新行替换）
+        elif in_part2 and _is_table_row_for_source(line, display_name):
+            if not part2_replaced:
+                output.append(new_part2_row)
+                part2_replaced = True
+            continue
+        else:
+            output.append(line)
+
+    if not part1_replaced:
+        logger.warning(f"[reporter] 聚合文档 Part 1 中未找到 {source_name} 行，跳过更新")
+    if not part2_replaced:
+        logger.warning(f"[reporter] 聚合文档 Part 2 中未找到 {source_name} 行，跳过更新")
+    if part1_replaced or part2_replaced:
+        path.write_text("\n".join(output), encoding="utf-8")
+        logger.info(f"[reporter] 聚合文档已更新 {source_name} 行（{path}）")
+
+
 def write_aggregate_report(source_results: Dict[str, Dict]) -> None:
     """生成 reports/all-sources-aggregate.md 聚合结论文档。
 

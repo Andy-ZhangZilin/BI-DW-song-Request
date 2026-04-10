@@ -225,6 +225,8 @@ class TestAuthFailureIsolation:
         reports_dir = tmp_path / "reports"
         monkeypatch.setattr(reporter_module, "REPORTS_DIR", reports_dir)
         monkeypatch.setattr(reporter_module, "REQUIREMENTS_PATH", tmp_path / "nonexistent.yaml")
+        # 切换到空目录，确保无历史 raw 文件触发回退逻辑
+        monkeypatch.chdir(tmp_path)
 
         mock_modules = _make_mock_modules(
             override={"dingtalk": _make_mock_source(auth_result=False)}
@@ -282,6 +284,8 @@ class TestFetchExceptionIsolation:
         reports_dir = tmp_path / "reports"
         monkeypatch.setattr(reporter_module, "REPORTS_DIR", reports_dir)
         monkeypatch.setattr(reporter_module, "REQUIREMENTS_PATH", tmp_path / "nonexistent.yaml")
+        # 切换到空目录，确保无历史 raw 文件触发回退逻辑
+        monkeypatch.chdir(tmp_path)
 
         mock_modules = _make_mock_modules(
             override={"awin": _make_mock_source(fetch_exception=RuntimeError("连接超时"))}

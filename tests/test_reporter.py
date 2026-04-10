@@ -352,6 +352,123 @@ class TestWriteAggregateReport:
 
 
 # ---------------------------------------------------------------------------
+# AC5: update_aggregate_source 更新聚合文档中单个数据源的行
+# ---------------------------------------------------------------------------
+
+class TestUpdateAggregateSource:
+    """update_aggregate_source 在 --source 单源模式下局部更新聚合文档。"""
+
+    def _make_initial_aggregate(self, tmp_reports: Path) -> Path:
+        """创建一个包含 youtube_url 和 awin 两行的最小聚合文档。"""
+        tmp_reports.mkdir(parents=True, exist_ok=True)
+        path = tmp_reports / "all-sources-aggregate.md"
+        content = "\n".join([
+            "# 数据源聚合结论文档",
+            "",
+            "**生成时间：** 2026-01-01 00:00:00",
+            "",
+            "---",
+            "",
+            "## Part 1：数据源采集结论汇总",
+            "",
+            "| 分类 | 数据来源 | 接口/表 | 采集状态 | 字段数 | 说明 |",
+            "|-----|---------|--------|---------|-------|------|",
+            "| youtube | youtube_url（视频URL） | youtube_url | 旧状态 | 5 |  |",
+            "| 联盟后台 | awin | awin | 已生成 | 10 |  |",
+            "",
+            "---",
+            "",
+            "## Part 2：各数据源字段详情",
+            "",
+            "| 分类 | 数据来源 | Raw 报告文件 | 采集状态 | 字段数 |",
+            "|-----|---------|------------|---------|-------|",
+            "| youtube | youtube_url（视频URL） | `reports/youtube_url-raw.md` | 旧状态 | 5 |",
+            "| 联盟后台 | awin | `reports/awin-raw.md` | 已生成 | 10 |",
+            "",
+            "---",
+            "",
+            "## Part 3：报表字段映射分析",
+            "",
+            "（人工填写内容，不应被覆盖）",
+            "",
+            "## Part 4：AI 分析提示语",
+            "",
+            "（提示语内容）",
+            "",
+        ])
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_update_replaces_part1_row(self, tmp_reports):
+        """更新后 Part 1 中该 source 的状态变为新值。"""
+        path = self._make_initial_aggregate(tmp_reports)
+        result = {
+            "success": True,
+            "status": "已生成",
+            "error": None,
+            "fields": {"youtube_url": [
+                {"field_name": "view_count", "data_type": "int", "sample_value": 100, "nullable": False}
+            ] * 7},
+        }
+        reporter.update_aggregate_source("youtube_url", result)
+        content = path.read_text(encoding="utf-8")
+        assert "旧状态" not in content.split("## Part 1")[1].split("## Part 2")[0]
+        assert "已生成" in content
+
+    def test_update_replaces_part2_row(self, tmp_reports):
+        """更新后 Part 2 中该 source 的字段数更新为新值。"""
+        path = self._make_initial_aggregate(tmp_reports)
+        result = {
+            "success": True,
+            "status": "已生成",
+            "error": None,
+            "fields": {"youtube_url": [
+                {"field_name": f"f{i}", "data_type": "str", "sample_value": "x", "nullable": False}
+                for i in range(9)
+            ]},
+        }
+        reporter.update_aggregate_source("youtube_url", result)
+        content = path.read_text(encoding="utf-8")
+        part2 = content.split("## Part 2")[1].split("## Part 3")[0]
+        assert "| 9 |" in part2
+
+    def test_update_preserves_other_source_rows(self, tmp_reports):
+        """更新 youtube_url 时，awin 的行不应被修改。"""
+        path = self._make_initial_aggregate(tmp_reports)
+        result = {
+            "success": True, "status": "已生成", "error": None,
+            "fields": {"youtube_url": [{"field_name": "f", "data_type": "s", "sample_value": None, "nullable": True}]},
+        }
+        reporter.update_aggregate_source("youtube_url", result)
+        content = path.read_text(encoding="utf-8")
+        assert "awin" in content
+        assert "| 联盟后台 | awin |" in content
+
+    def test_update_preserves_part3_and_part4(self, tmp_reports):
+        """Part 3 和 Part 4 中的人工填写内容不被覆盖。"""
+        path = self._make_initial_aggregate(tmp_reports)
+        result = {"success": False, "status": "认证失败", "error": "mock", "fields": {}}
+        reporter.update_aggregate_source("youtube_url", result)
+        content = path.read_text(encoding="utf-8")
+        assert "人工填写内容，不应被覆盖" in content
+        assert "提示语内容" in content
+
+    def test_update_skips_when_file_missing(self, tmp_reports):
+        """聚合文档不存在时记录 warning，不报错。"""
+        result = {"success": True, "status": "已生成", "error": None, "fields": {}}
+        # 文件不存在时不应抛出异常
+        reporter.update_aggregate_source("youtube_url", result)
+
+    def test_update_with_fallback_status(self, tmp_reports):
+        """历史数据回退状态（已生成（历史数据））在聚合文档中正确写入。"""
+        self._make_initial_aggregate(tmp_reports)
+        result = {"success": True, "status": "已生成（历史数据）", "error": None, "fields": {}}
+        reporter.update_aggregate_source("youtube_url", result)
+        content = tmp_reports.joinpath("all-sources-aggregate.md").read_text(encoding="utf-8")
+        assert "已生成（历史数据）" in content
+
+
+# ---------------------------------------------------------------------------
 # 边界情况
 # ---------------------------------------------------------------------------
 

@@ -12,6 +12,7 @@ import argparse
 import importlib
 import logging
 import sys
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import reporter
@@ -242,7 +243,23 @@ def main() -> None:
     # --- 调度循环 ---
     source_results: Dict[str, Dict] = {}
     for source_name, module in sources_to_run.items():
-        source_results[source_name] = _run_source(source_name, module, table=args.table)
+        result = _run_source(source_name, module, table=args.table)
+        # 优化2：--all 模式下，某数据源失败时检查历史 raw 文件
+        # 若 raw 文件存在，说明历史上曾采集成功，采集状态标记为已生成（历史数据）
+        if not args.source and not result["success"]:
+            raw_path = Path("reports") / f"{source_name}-raw.md"
+            if raw_path.exists():
+                logger.info(
+                    f"[{source_name}] 本次执行失败，但发现历史 raw 文件，"
+                    f"采集状态标记为已生成（历史数据）"
+                )
+                result["success"] = True
+                result["status"] = "已生成（历史数据）"
+        source_results[source_name] = result
+
+    # 优化1：--source 单源模式，将本次结果同步更新到聚合文档对应行
+    if args.source:
+        reporter.update_aggregate_source(args.source, source_results[args.source])
 
     # --- --all 模式：生成聚合结论文档 ---
     if args.all:
