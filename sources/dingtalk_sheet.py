@@ -84,7 +84,7 @@ def _get_first_sheet_id(token: str, operator_id: str) -> str:
         timeout=30,
     )
     resp.raise_for_status()
-    sheets = resp.json().get("sheets", [])
+    sheets = resp.json().get("value", [])
     if not sheets:
         raise RuntimeError(f"[{SOURCE_NAME}] 工作簿 {WORKBOOK_ID} 中未找到任何 Sheet")
     return sheets[0]["id"]
