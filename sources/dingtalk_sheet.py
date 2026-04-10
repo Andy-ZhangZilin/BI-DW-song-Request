@@ -31,7 +31,7 @@ _cached_token: str | None = None
 _token_expiry: float = 0.0
 
 _TOKEN_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
-_WORKBOOK_BASE = "https://api.dingtalk.com/v1.0/table/workbooks"
+_WORKBOOK_BASE = "https://api.dingtalk.com/v1.0/doc/workbooks"
 
 # 工作簿 ID：红人支付需求
 WORKBOOK_ID = "XPwkYGxZV3RRlXAQCjaPjk6zWAgozOKL"
