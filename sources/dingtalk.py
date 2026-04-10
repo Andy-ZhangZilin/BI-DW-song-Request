@@ -73,7 +73,7 @@ def _load_token() -> str:
     global _cached_token, _token_expiry
     if _cached_token and time.time() < _token_expiry - 60:
         return _cached_token
-    creds = _creds_module.get_credentials()
+    creds = _creds_module.get_credentials(source_name=SOURCE_NAME)
     resp = requests.post(
         _TOKEN_URL,
         json={"appKey": creds["DINGTALK_APP_KEY"], "appSecret": creds["DINGTALK_APP_SECRET"]},
