@@ -183,34 +183,34 @@
 
 | 报表字段 | 来源数据源 | 来源字段（真实） | 映射状态 | 备注 |
 |---------|----------|---------------|---------|------|
-| 红人ID | dingtalk | *红人ID | 可映射 | 三张源表均有该字段 |
-| 红人类型 | dingtalk | 红人类型 | 可映射 | 示例：工具, 枪支；TK达人信息表可能缺失，缺失时忽略 |
-| 合作平台 | dingtalk | *主页链接 | 需转换 | 钉钉无"合作平台"字段，需从 *主页链接 URL 解析平台（youtube.com→YouTube，tiktok.com→TikTok 等） |
-| 跟进人 | dingtalk | *跟进人 | 可映射 | |
-| 主页链接 | dingtalk | *主页链接 | 可映射 | |
-| 所在州 | dingtalk | *所在州 | 可映射 | |
-| 粉丝数 | dingtalk | *粉丝数（k） | 可映射 | 单位为 k（千），使用时注意单位换算 |
-| 均播 | dingtalk | 长视频均播（k） | 可映射 | 单位为 k；TK达人信息表可能缺失 |
-| 红人等级 | dingtalk | 红人等级 | 可映射 | 示例：B |
-| 合作模式 | dingtalk | *合作模式 | 可映射 | 示例：单次合作 |
-| 付费模式 | dingtalk | *付费模式 | 可映射 | 示例：纯样品置换 |
-| 合作价格及交付项 | dingtalk | *合作价格及交付项（格式：合作周期-价格-交付内容） | 可映射 | 为非结构化文本，不易二次计算 |
-| 佣金率 | dingtalk | *佣金率 | 可映射 | 注意：示例值含 #REF! 错误，数据质量需人工核查 |
-| 合作review | dingtalk | 合作review | 可映射 | |
-| 后续动作 | dingtalk | 后续动作 | 可映射 | |
-| Code | dingtalk | *Code | 可映射 | 折扣码，可用于在 TW pixel_orders_table 中识别 KOL 带来的订单 |
-| UTM长链 | — | — | 缺失 | 钉钉无 UTM 长链字段，仅有原UTM；建议在钉钉表中补充该列 |
+| 红人ID | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | *红人ID；拍摄KOL | 可映射 | 两张表均有红人标识，以 *红人ID 为主键 |
+| 红人类型 | dingtalk / kol_tidwe_红人信息汇总 | 红人类型 | 可映射 | 示例：工具, 枪支；outdoor_拍摄资源表KOL信息无此字段 |
+| 合作平台 | dingtalk / outdoor_拍摄资源表KOL信息 | Channel | 可映射 | 示例：YouTube；字段已结构化；备选：kol_tidwe_红人信息汇总 → 从 *主页链接 URL 解析（需转换） |
+| 跟进人 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | *跟进人；🤵对接人 | 可映射 | 两张表字段名不同，含义一致 |
+| 主页链接 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | *主页链接；YTB主页链接 / TK主页链接 / FB/IG主页链接 | 可映射 | 拍摄资源表按平台分列存储，更易按平台筛选 |
+| 所在州 | dingtalk / kol_tidwe_红人信息汇总 | *所在州 | 可映射 | 示例：Mississippi；outdoor_拍摄资源表KOL信息仅有国家字段（粒度不足） |
+| 粉丝数 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | *粉丝数（k）；Followers | 可映射 | 红人信息汇总单位为 k（千）；拍摄资源表为原始数值（示例：98000），两者单位不同，取用时需统一 |
+| 均播 | dingtalk / kol_tidwe_红人信息汇总 | 长视频均播（k） | 可映射 | 单位为 k；outdoor_拍摄资源表KOL信息无此字段 |
+| 红人等级 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | 红人等级；红人等级 | 可映射 | 两张表均有，示例：B |
+| 合作模式 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / kol_tidwe_内容上线；dingtalk / outdoor_拍摄资源表KOL信息 | *合作模式；合作模式；合作模式 | 可映射 | 三张表均有，示例：单次合作 / 长期合作 |
+| 付费模式 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | *付费模式；付费模式 / Cooperation-合作形式 | 可映射 | 示例：纯样品置换 / 纯付费；Cooperation-合作形式示例：Free |
+| 合作价格及交付项 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / kol_tidwe_内容上线；dingtalk / outdoor_拍摄资源表KOL信息 | *合作价格及交付项；*合作价格（日期：价格/交付内容）；Price Note | 可映射 | 三表均有，内容为非结构化文本；Price Note 最简洁（示例：$250）；dingtalk_sheet → 合作内容 也有记录 |
+| 佣金率 | dingtalk / kol_tidwe_红人信息汇总 | *佣金率 | 可映射 | 注意：示例值含 #REF! 错误，数据质量需人工核查后再使用 |
+| 合作review | dingtalk / kol_tidwe_红人信息汇总 | 合作review | 可映射 | |
+| 后续动作 | dingtalk / kol_tidwe_红人信息汇总 | 后续动作 | 可映射 | |
+| Code | dingtalk / kol_tidwe_红人信息汇总；dingtalk / kol_tidwe_内容上线；dingtalk / outdoor_拍摄资源表KOL信息；dingtalk / outdoor_原始素材生产及优化 | *Code；*CODE；Promo Code；Tiktok code | 可映射 | 四张表均有折扣码/推广码，字段名略有差异，以 *Code（红人信息汇总）为主 |
+| UTM长链 | — | — | 缺失 | 所有钉钉子表均无 UTM 长链字段；建议在红人信息汇总表中新增该列 |
 | UTM短链 | — | — | 缺失 | 同上 |
-| 原UTM | dingtalk | 原UTM | 可映射 | |
-| Email | dingtalk | *Email | 可映射 | |
-| 其他联系方式 | dingtalk | 其他联系方式 | 可映射 | |
-| 备注 | dingtalk | 备注 | 可映射 | |
-| 全名 | dingtalk | *全名 | 可映射 | |
-| 寄样地址 | dingtalk | *寄样地址 | 可映射 | |
-| 收款信息 | dingtalk | *收款信息 | 可映射 | 示例为文本格式（$5000/video），非结构化 |
-| 合作日期 | — | — | 缺失 | 当前采集的钉钉 raw 无合作日期字段；建议确认是否在钉钉寄样记录或其他子表中存在 |
-| 合作产品 | — | — | 缺失 | 当前 raw 无合作产品字段；建议确认钉钉寄样记录子表 |
-| 内容发布 | — | — | 缺失 | 当前 raw 无内容发布字段；TikTok 视频ID 可作为部分补充（video_performances → videos[].id），但覆盖不完整 |
+| 原UTM | dingtalk / kol_tidwe_红人信息汇总 | 原UTM | 可映射 | 示例：https://bit.ly/4sbdhHw（短链） |
+| Email | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | *Email；*Email | 可映射 | 两张表均有 |
+| 其他联系方式 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | 其他联系方式；Whatsapp / Phone | 可映射 | 拍摄资源表有独立的 Whatsapp 和 Phone 字段，更结构化 |
+| 备注 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息；dingtalk / kol_tidwe_内容上线 | 备注；Feature Note-备注；备注 | 可映射 | 三张表均有备注字段 |
+| 全名 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | *全名；Real Name | 可映射 | 字段名不同，含义相同 |
+| 寄样地址 | dingtalk / kol_tidwe_红人信息汇总；dingtalk / outdoor_拍摄资源表KOL信息 | *寄样地址；*寄样地址 | 可映射 | 两张表均有 |
+| 收款信息 | dingtalk / kol_tidwe_红人信息汇总；dingtalk_sheet | *收款信息；Round(实际支付金额） | 需转换 | *收款信息为非结构化文本（如"$5000/video"）；dingtalk_sheet 有结构化金额字段，可通过 Username 关联红人 ID 获取实际付款记录 |
+| 合作日期 | dingtalk / outdoor_拍摄资源表KOL信息；dingtalk / kol_tidwe_内容上线 | Contract Date-签合同时间；*实际发布日期 | 可映射 | Contract Date-签合同时间最接近合作日期（时间戳，需转换）；备选：内容上线表 → *实际发布日期 |
+| 合作产品 | dingtalk / kol_tidwe_内容上线；dingtalk / kol_tidwe_寄样记录；dingtalk / outdoor_原始素材生产及优化 | *推广产品；*产品；产品SKU / 产品SPU | 可映射 | 内容上线表 *推广产品 最直接（示例：HJ011）；寄样记录 *产品 可补充；原始素材表可提供 SPU 粒度 |
+| 内容发布 | dingtalk / kol_tidwe_内容上线；dingtalk / outdoor_原始素材生产及优化 | *内容发布链接；KOL 上线视频链接 | 可映射 | 内容上线表 819 条记录覆盖较全；outdoor_原始素材生产及优化 也有 KOL 上线视频链接字段 |
 
 **数据来源提示：**
 
@@ -228,14 +228,14 @@
 
 | 报表字段 | 来源数据源 | 来源字段（真实） | 映射状态 | 备注 |
 |---------|----------|---------------|---------|------|
-| 内容发布id | tiktok / video_performances；youtube_url | videos[].id；id | 可映射 | TikTok 视频 ID：videos[].id；YouTube 视频 ID：youtube_url → id |
-| 内容发布url | tiktok / video_performances；youtube_url | videos[].id；id | 需转换 | 无直接 URL 字段，需根据平台+ID 拼接：TikTok URL 格式：https://www.tiktok.com/@{username}/video/{id}；YouTube URL 格式：https://www.youtube.com/watch?v={id} |
-| 日期 | tiktok / video_performances | videos[].video_post_time | 可映射 | TikTok 有发布时间；YouTube URL 接口（youtube_url）无日期字段，缺失 |
-| 播放 | tiktok / video_performances；youtube_url | videos[].views；statistics.viewCount | 可映射 | TikTok：videos[].views；YouTube：statistics.viewCount |
-| 点赞数 | tiktok / shop_video_performance_detail；youtube_url | performance.intervals[].traffic.likes；statistics.likeCount | 可映射 | TikTok 需通过 shop_video_performance_detail 按 video_id 查询；YouTube：statistics.likeCount；文档注：若获取不到可放弃 |
-| 评论数 | tiktok / shop_video_performance_detail；youtube_url | performance.intervals[].traffic.comments；statistics.commentCount | 可映射 | TikTok 需通过 shop_video_performance_detail 按 video_id 查询；YouTube：statistics.commentCount；文档注：若获取不到可放弃 |
-| GMV | tiktok / video_performances；triplewhale / pixel_orders_table | videos[].gmv.amount；order_revenue | 需转换 | TikTok 达人视频 GMV：videos[].gmv.amount（直接可用）；KOL YouTube GMV：pixel_orders_table 中过滤 discount_code IN (KOL折扣码列表) 后汇总 order_revenue |
-| 新客数 | triplewhale / pixel_orders_table | is_new_customer / discount_code | 需转换 | 通过折扣码圈定 KOL 带来的订单，再过滤 is_new_customer = True 计数；TikTok video_performances → videos[].avg_customers 含义为"平均客户数"非新客数，不可直接使用 |
+| 内容发布id | dingtalk / kol_tidwe_内容上线；tiktok / video_performances；youtube_url | *内容发布链接（提取ID）；videos[].id；id | 需转换 | 内容上线表有完整发布链接，可从URL提取ID；TikTok：videos[].id；YouTube：youtube_url → id |
+| 内容发布url | dingtalk / kol_tidwe_内容上线；dingtalk / outdoor_原始素材生产及优化；dingtalk_sheet | *内容发布链接；KOL 上线视频链接；交付链接 | 可映射 | 内容上线表 819 条记录最完整（示例：https://www.youtube.com/watch?v=BVZfopu5SHA）；dingtalk_sheet.交付链接可补充付费合作内容 |
+| 日期 | dingtalk / kol_tidwe_内容上线；tiktok / video_performances | *实际发布日期；videos[].video_post_time | 可映射 | 内容上线表：*实际发布日期（时间戳毫秒，需转换为日期）；TikTok：videos[].video_post_time；YouTube URL 接口无日期字段 |
+| 播放 | dingtalk / kol_tidwe_内容上线；tiktok / video_performances；youtube_url | 播放数；videos[].views；statistics.viewCount | 可映射 | 内容上线表有手动维护的播放数（示例：299）；TikTok/YouTube 可通过平台接口获取实时数据（优先使用平台接口数据） |
+| 点赞数 | tiktok / shop_video_performance_detail；youtube_url | performance.intervals[].traffic.likes；statistics.likeCount | 待人工确认 | 钉钉各子表均无点赞字段；TikTok 需通过 shop_video_performance_detail 按 video_id 查询；YouTube：statistics.likeCount；文档注：若获取不到可放弃 |
+| 评论数 | tiktok / shop_video_performance_detail；youtube_url | performance.intervals[].traffic.comments；statistics.commentCount | 待人工确认 | 同点赞数；文档注：若获取不到可放弃 |
+| GMV | tiktok / video_performances；triplewhale / pixel_orders_table | videos[].gmv.amount；order_revenue | 需转换 | TikTok 达人视频：videos[].gmv.amount（直接可用）；YouTube KOL：pixel_orders_table 中过滤 discount_code IN（kol_tidwe_内容上线.*CODE 列表）后汇总 order_revenue |
+| 新客数 | triplewhale / pixel_orders_table | is_new_customer / discount_code | 需转换 | 通过 kol_tidwe_内容上线.*CODE 在 pixel_orders_table 中圈定订单，再过滤 is_new_customer = True 计数；TikTok video_performances.avg_customers 含义为"平均客户数"，不可直接使用 |
 
 **数据来源提示：**
 
@@ -255,21 +255,21 @@
 
 | 报表字段 | 来源数据源 | 来源字段（真实） | 映射状态 | 备注 |
 |---------|----------|---------------|---------|------|
-| 寄样单号 | dingtalk（寄样记录子表） | — | 待人工确认 | 当前 dingtalk raw 采集的是"红人信息汇总"，寄样记录子表未单独采集；需确认钉钉多维表中寄样记录的字段结构 |
-| 合作状态 | dingtalk（寄样记录子表） | — | 待人工确认 | 同上，未采集寄样记录表 |
-| 红人ID/达人ID | dingtalk | *红人ID | 可映射 | 通过 *红人ID 与寄样记录关联 |
-| 寄样时间 | dingtalk（寄样记录子表） | — | 待人工确认 | 未采集寄样记录表 |
-| 寄样产品SKU | dingtalk（寄样记录子表） | — | 待人工确认 | 未采集寄样记录表 |
-| 样品费 | — | — | 缺失 | 据业务提示来源为 OMS 发货单（寄样单头采尾），当前无 OMS 数据源接入；建议后续接入 OMS 或从合思费控导入 |
-| 合作费 | dingtalk | *收款信息 | 待人工确认 | *收款信息为非结构化文本（如"$5000/video"），无法直接作为数值字段使用；需结构化处理或另行采集 |
-| 佣金 | — | — | 待人工确认 | 钉钉仅有 *佣金率（百分比），无佣金金额；可计算：销售额 × 佣金率；TikTok affiliate_campaign_performance 接口采集失败，无法直接获取联盟佣金金额 |
-| 合作视频/素材 | tiktok / video_performances；youtube_url | videos[].id；id | 需转换 | TikTok 通过达人 username 关联视频 ID；YouTube 通过 KOL 主页链接关联 URL；需人工维护 KOL-视频 ID 映射关系 |
-| 曝光量 | tiktok / video_performances；youtube_url | videos[].views；statistics.viewCount | 可映射 | TikTok 达人视频：videos[].views；YouTube：statistics.viewCount |
-| 流量 | triplewhale / pixel_joined_tvf | clicks | 需转换 | 通过折扣码/UTM 在 pixel_joined_tvf 中过滤对应渠道后取 clicks；需业务提供 KOL 归因关键词范围 |
-| 订单数 | triplewhale / pixel_orders_table | orders_quantity / discount_code | 需转换 | 过滤 discount_code IN (KOL折扣码列表) 后按 order_id 去重计数 |
+| 寄样单号 | dingtalk / kol_tidwe_寄样记录 | *单号 | 可映射 | 示例：1000220251125004763；305 条记录已采集 |
+| 合作状态 | dingtalk / outdoor_拍摄资源表KOL信息 | Cooperation Phase-合作状态 | 待人工确认 | 示例：合作中；该字段为 KOL 整体合作状态，非寄样单维度；kol_tidwe_寄样记录本身无合作状态字段，需通过 *红人ID 关联拍摄资源表获取 |
+| 红人ID/达人ID | dingtalk / kol_tidwe_寄样记录 | *红人ID | 可映射 | |
+| 寄样时间 | dingtalk / kol_tidwe_寄样记录 | *寄样时间 | 可映射 | 时间戳（毫秒），示例：1764000000000，需转换为日期格式 |
+| 寄样产品SKU | dingtalk / kol_tidwe_寄样记录；dingtalk / outdoor_原始素材生产及优化 | *产品；实际发货sku | 可映射 | *产品示例：BL001；实际发货sku示例：BL001（两者含义一致） |
+| 样品费 | — | — | 缺失 | 样品费=采购+头程+尾程，当前无 OMS 数据源；dingtalk_sheet.金额（USD）可能包含样品费，但无法通过合作内容字段可靠区分；建议后续接入 OMS 或从合思费控导入 |
+| 合作费 | dingtalk_sheet；dingtalk / outdoor_原始素材生产及优化；dingtalk / outdoor_拍摄资源表KOL信息 | Round(实际支付金额）；合作价格；Price Note | 可映射 | dingtalk_sheet.Round(实际支付金额）为实际到账金额（含手续费），最可靠；通过 Username 关联红人ID；outdoor_原始素材生产及优化.合作价格为结构化数值（示例：50）；Price Note 示例：$250 |
+| 佣金 | dingtalk / kol_tidwe_红人信息汇总；dingtalk_sheet | *佣金率（计算）；金额（USD） | 需转换 | 无直接佣金金额字段；可计算：销售额 × 佣金率（注意 *佣金率 有 #REF! 错误，需先修复）；dingtalk_sheet 若有佣金类支付记录可通过 合作内容 字段过滤，但字段粒度不细；TikTok affiliate_campaign_performance 接口采集失败 |
+| 合作视频/素材 | dingtalk / kol_tidwe_内容上线；dingtalk / outdoor_原始素材生产及优化；dingtalk_sheet | *内容发布链接；KOL 上线视频链接；交付链接 | 可映射 | 内容上线表最全（819条）；outdoor_原始素材表有 KOL 上线视频链接；dingtalk_sheet.交付链接为线上发布资源 URL |
+| 曝光量 | dingtalk / kol_tidwe_内容上线；tiktok / video_performances；youtube_url | 播放数；videos[].views；statistics.viewCount | 可映射 | 内容上线表手动维护播放数（示例：299）；TikTok/YouTube 接口数据优先于手工维护数据 |
+| 流量 | triplewhale / pixel_joined_tvf | clicks | 需转换 | 通过 kol_tidwe_内容上线.*CODE 关联 pixel_joined_tvf.discount_codes 后取 clicks；需业务提供 KOL 归因关键词范围 |
+| 订单数 | triplewhale / pixel_orders_table | orders_quantity / discount_code | 需转换 | 过滤 discount_code IN（kol_tidwe_内容上线.*CODE 列表）后按 order_id 去重计数 |
 | 销量 | triplewhale / pixel_orders_table | product_quantity_sold_in_order / discount_code | 需转换 | 同上，汇总 product_quantity_sold_in_order |
-| 销售额 | triplewhale / pixel_orders_table；tiktok / video_performances | order_revenue；videos[].gmv.amount | 需转换 | KOL：pixel_orders_table 过滤折扣码后汇总 order_revenue；TikTok 达人：videos[].gmv.amount |
-| 新客数 | triplewhale / pixel_orders_table | is_new_customer / discount_code | 需转换 | 过滤折扣码后，统计 is_new_customer = True 的订单数 |
+| 销售额 | triplewhale / pixel_orders_table；tiktok / video_performances | order_revenue；videos[].gmv.amount | 需转换 | YouTube KOL：pixel_orders_table 过滤折扣码后汇总 order_revenue；TikTok 达人：videos[].gmv.amount |
+| 新客数 | triplewhale / pixel_orders_table | is_new_customer / discount_code | 需转换 | 通过 kol_tidwe_内容上线.*CODE 圈定订单，统计 is_new_customer = True 的记录数 |
 
 **数据来源提示：**
 
