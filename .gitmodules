@@ -1,0 +1,3 @@
+[submodule "bi"]
+	path = bi
+	url = https://github.com/HuaqingAI/hqbi.git
