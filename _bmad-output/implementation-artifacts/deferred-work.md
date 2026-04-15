@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: code review of 8-2-partnerboost联盟数据采集落库 (2026-04-15)
+
+- 登录重定向校验过于宽松 — `lambda url: "login" not in url` 对错误页面也通过；与 Story 4.3 相同模式，暂缓
+- `_to_float` 未处理非美元货币符号（€、括号负数等）— PartnerBoost 当前仅 USD，范围外暂缓
+- `collect_date` 未做格式校验 — 调用方责任，CLI 文档已说明 YYYY-MM-DD 格式
+- `sys.path.insert` 模块级副作用 — bi/ 子模块既有架构模式，统一处理
+- 异常链可能泄露凭证信息 — 内部工具，受控日志环境，暂缓
+- `partner` 为空字符串时复合唯一键可能碰撞 — 真实数据中不应为空，异常情况后续处理
+
 ## Deferred from: code review of 1-1-项目结构初始化 (2026-04-03)
 
 - `requirements.txt` 未锁定依赖版本 — 待全部功能实现后 `pip freeze` 固定（架构文档指定时间点）
