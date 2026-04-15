@@ -96,7 +96,7 @@ development_status:
   epic-6: in-progress
   6-0-api客户端sdk层建立: done
   6-1-目录初始化与公共写入工具: done
-  6-2-水位线管理器: backlog
+  6-2-水位线管理器: done
   6-3-分片并发与断点续传框架: backlog
   epic-6-retrospective: optional
 
