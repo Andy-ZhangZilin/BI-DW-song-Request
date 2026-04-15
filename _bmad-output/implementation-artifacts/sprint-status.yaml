@@ -93,8 +93,8 @@ development_status:
   # 调度平台: 海豚调度（DolphinScheduler）
 
   # Epic 6: 数据采集基础设施
-  epic-6: backlog
-  6-0-api客户端sdk层建立: backlog
+  epic-6: in-progress
+  6-0-api客户端sdk层建立: done
   6-1-目录初始化与公共写入工具: backlog
   6-2-水位线管理器: backlog
   6-3-分片并发与断点续传框架: backlog
