@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-15  # CC Phase2: 新增 Epic 6/7/8 数据采集与落库
+last_updated: 2026-04-15  # CC Phase2: 新增 Epic 6/7/8 数据采集与落库；6-1 code review done
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -95,7 +95,7 @@ development_status:
   # Epic 6: 数据采集基础设施
   epic-6: in-progress
   6-0-api客户端sdk层建立: done
-  6-1-目录初始化与公共写入工具: backlog
+  6-1-目录初始化与公共写入工具: done
   6-2-水位线管理器: backlog
   6-3-分片并发与断点续传框架: backlog
   epic-6-retrospective: optional

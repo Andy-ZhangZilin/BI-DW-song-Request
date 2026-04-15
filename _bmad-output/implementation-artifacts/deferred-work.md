@@ -123,3 +123,15 @@
 
 - `_escape_cell` 未转义 Markdown 强调字符 (`*`, `_`, `` ` ``) [reporter.py:53] — 预存行为，Story 1-4 以来未处理；API 返回值含这些字符时报告渲染会异常
 - tiktok 单表异常时 `result["success"]` 仍为 True — 部分成功未标识 [validate.py:116-117] — 预存设计，tiktok 多接口路由的容错策略，需产品决策是否区分部分成功
+
+## Deferred from: code review of 6-1-目录初始化与公共写入工具 (2026-04-15)
+
+- 中途批次失败无 rollback [common/doris_writer.py:65-69] — spec 设计如此，每批单独 commit；Doris 非完整 ACID，rollback 对已提交批次无效
+- doris_config.py 明文密码 + root 用户 [doris_config.py:11] — 项目级设计，spec 明确"一字不差"复制既有模式
+- table/column 名直接拼入 SQL [common/doris_writer.py:50-58] — 内部工具，调用方完全可控
+- SET enable_insert_strict=false 压制部分 DB 错误 [common/doris_writer.py:64] — spec 必要配置，Doris upsert 要求
+- 全部列均为 unique_key 时退化为普通 INSERT 无告警 [common/doris_writer.py:47-59] — spec 未要求此告警
+- total_written 统计提交行数而非 rowcount [common/doris_writer.py:70] — spec 设计如此
+- DorisConfig 单例非线程安全 [doris_config.py:3-13] — 项目级既定模式
+- logger.error + re-raise 重复日志 [common/doris_writer.py:75-76] — 可接受，有助排查
+- DB_CONFIG 未指定 charset [doris_config.py:7-13] — 复制自既有模式，需统一评估
