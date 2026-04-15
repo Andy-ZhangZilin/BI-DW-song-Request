@@ -317,3 +317,92 @@ outdoor-data-validator/
 
 - 单个数据源的样本抓取和报告生成在正常网络条件下 60 秒内完成
 - 全部数据源批量运行总时长不作硬性要求，以实际网络和平台响应为准
+
+---
+
+## Phase 2：数据采集与落库
+
+> **版本记录：** 本章节由 CC Phase2 Sprint Change Proposal（2026-04-15）新增，第一阶段（Phase 1）所有产物保持不变。
+
+### Phase 2 执行摘要
+
+Phase 1（字段可行性验证）已全部完成，验证工具成功回答了"哪些字段能取到、哪些取不到"，并通过 AI 聚合分析完成了字段映射。
+
+**Phase 2** 在此基础上进入**数据采集与落库**阶段：将各数据源的原始数据真正拉取并写入 Apache Doris 数据仓库，供后续报表开发和数据加工使用。
+
+**技术定位：**
+- 代码位置：`bi/python_sdk/outdoor_collector/`（独立目录，与现有 `大户外事业部/` 等目录并列）
+- 调度平台：海豚调度（DolphinScheduler）
+- 数据库连接：pymysql 直连 Doris（沿用现有 `doris_config.py` 单例模式）
+- 部署方式：整目录 rsync 到服务器，`outdoor_collector/` 为自含部署单元
+
+### Phase 2 成功标准
+
+| 指标 | 目标 |
+|------|------|
+| 数据源覆盖 | 全部已验证数据源（除 CartSee 待确认外）原始数据成功落库 Doris |
+| 幂等写入 | 所有数据源写入均为幂等 upsert，重复运行不产生重复数据 |
+| 水位线运转 | 首次全量、后续增量、中断续跑均验证通过 |
+| 分片并发 | TripleWhale sessions_table 分片并发拉取完成，无数据丢失 |
+| SDK 复用 | TikTok/TripleWhale/钉钉 SDK 被所有对应 collector 复用，无重复认证实现 |
+
+### Phase 2 功能需求
+
+#### 9. 数据采集基础设施
+
+- **FR31**：系统在 `bi/python_sdk/outdoor_collector/` 下建立完整目录结构（`sdk/`、`common/`、`collectors/`），各含 `__init__.py`
+- **FR32**：系统通过 `sdk/tiktok/`、`sdk/triplewhale/`、`sdk/dingtalk/` 三个客户端模块集中管理 API 认证逻辑；各客户端对外暴露对应的 Client 类（`TikTokClient`、`TripleWhaleClient`、`DingTalkClient`）
+- **FR33**：系统通过 `common/doris_writer.py` 提供统一 upsert 写入封装 `write_to_doris(table, records, unique_keys)`，内部使用 pymysql + executemany，batch_size=1000
+- **FR34**：系统通过 Doris `etl_watermark` 表管理采集水位线；首次运行（无水位线记录）自动触发全量拉取，后续运行读取水位线做增量
+- **FR35**：系统支持 `--mode full` 参数，强制重置水位线并重跑全量，无需手动删除水位线记录
+- **FR36**：系统通过 `common/chunked_fetch.py` 提供通用分片并发框架 `chunked_fetch(source, table, fetch_fn, start, end, chunk_days, workers)`；分片粒度和并发数可配置，默认 `chunk_days=30`、`workers=4`
+- **FR37**：分片并发框架支持断点续传：重启时跳过已完成分片，仅重跑 pending 和 failed 分片；单片失败不影响其他分片继续执行
+
+#### 10. API 类数据源采集落库
+
+- **FR38**：系统可将 TripleWhale 全部已验证表（pixel_orders_table 等 10 张）数据采集并写入 Doris；`sessions_table` 必须启用分片并发框架；写入策略为 upsert
+- **FR39**：系统可将 TikTok Shop 6 个已验证接口路由数据采集并写入 Doris；增量模式归因窗口**回溯 3 天**；写入以订单 ID 为主键做 upsert
+- **FR40**：系统可将钉钉多维表数据采集并写入 Doris；采用全量拉取 + upsert 策略（API 无时间过滤接口）；关联字段返回空时写 NULL，不报错
+- **FR41**：系统可基于 Doris 中已入库的钉钉 `kol_tidwe_内容上线` 表的视频 URL 字段，自动拉取对应 YouTube 视频统计数据并写入 Doris；仅处理 YouTube 域名链接；Story 7.4 执行依赖 Story 7.3（钉钉数据已入库）
+- **FR42**：系统可将 Awin 联盟交易数据采集并写入 Doris；增量模式使用 `start_date`/`end_date` 时间过滤，**佣金状态回溯窗口可配置**；写入以 transaction_id 为主键做 upsert
+
+#### 11. 爬虫类数据源采集落库
+
+- **FR43**：系统可通过 Playwright 自动登录 PartnerBoost 后台，每日采集当天联盟数据并写入 Doris；遇验证码时抛出 RuntimeError 并中断；不依赖水位线框架（每日全量当天数据）
+- **FR44**：系统可通过 Playwright 登录 Facebook Business Suite，采集帖子和 Reels 列表并写入 Doris；采用全量拉取 + upsert 策略；遇验证码时抛出 RuntimeError，不静默失败
+- **FR45（blocked）**：CartSee EDM 数据采集落库 — **暂缓**，爬虫页面结构已变更，待确认新方案后解锁
+
+### Phase 2 非功能需求补充
+
+#### 幂等性
+
+- 所有数据源写入均为 upsert，重复运行不产生重复数据
+- 水位线更新仅在成功写入 Doris 后执行，失败时不更新
+- 写入前执行 `SET enable_unique_key_partial_update = true` 和 `SET enable_insert_strict = false`
+
+#### 可靠性（补充）
+
+- 单片失败不影响其他分片继续执行，失败分片状态记为 `failed` 并打印完整错误
+- `sessions_table` 等大数据量表支持中断后从断点续跑，无需从头重来
+
+#### 调度兼容性
+
+- 采集脚本支持在海豚调度（DolphinScheduler）中通过任务路径直接调用，无需额外安装步骤
+- `outdoor_collector/` 整目录为自含部署单元，rsync 后即可使用
+
+#### 安全性（补充）
+
+- `doris_config.py` 含明文数据库密码，**禁止将该文件内容输出到日志、报告或任何外部系统**
+- SDK 层凭证统一通过 `.env` 加载，不硬编码任何密钥
+
+### Phase 2 项目范围
+
+| Epic | 目标 | 状态 |
+|------|------|------|
+| Epic 6：数据采集基础设施 | SDK 层 + 公共工具（水位线、分片并发、写入封装） | backlog |
+| Epic 7：API 类数据源采集落库 | TripleWhale / TikTok / 钉钉 / YouTube / Awin | backlog |
+| Epic 8：爬虫类数据源采集落库 | PartnerBoost / Facebook Business Suite（CartSee 暂缓） | backlog |
+
+**开发顺序约束：**
+- Story 6.0（SDK 层）→ Story 6.1（目录初始化 + 写入封装）→ Story 6.2（水位线）→ Story 6.3（分片并发）
+- Epic 7（API 数据源，Story 7.3 先于 7.4）→ Epic 8（爬虫数据源）

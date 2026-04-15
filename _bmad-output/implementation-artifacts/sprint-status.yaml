@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-09  # CC#2: 新增 Story 1.5 报告体系重构-聚合文档与AI分析
+last_updated: 2026-04-15  # CC Phase2: 新增 Epic 6/7/8 数据采集与落库
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -86,3 +86,33 @@ development_status:
   5-1-validate.py-cli-入口与调度器: done
   5-2-端到端集成验证: done
   epic-5-retrospective: optional
+
+  # ===== Phase 2: 数据采集与落库 =====
+  # CC Phase2 2026-04-15: 新增 Epic 6/7/8，第二阶段独立交付单元
+  # 代码位置: bi/python_sdk/outdoor_collector/
+  # 调度平台: 海豚调度（DolphinScheduler）
+
+  # Epic 6: 数据采集基础设施
+  epic-6: backlog
+  6-0-api客户端sdk层建立: backlog
+  6-1-目录初始化与公共写入工具: backlog
+  6-2-水位线管理器: backlog
+  6-3-分片并发与断点续传框架: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: API 类数据源采集落库
+  epic-7: backlog
+  7-1-triplewhale数据采集落库: backlog
+  7-2-tiktok-shop数据采集落库: backlog
+  7-3-钉钉多维表数据采集落库: backlog
+  7-4-youtube视频统计数据采集落库: backlog
+  7-5-awin联盟数据采集落库: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: 爬虫类数据源采集落库
+  # Story 8.1 (CartSee) 暂缓: 爬虫页面结构已变更，待确认新方案
+  epic-8: backlog
+  8-1-cartsee-edm数据采集落库: blocked
+  8-2-partnerboost联盟数据采集落库: backlog
+  8-3-facebook-business-suite数据采集落库: backlog
+  epic-8-retrospective: optional

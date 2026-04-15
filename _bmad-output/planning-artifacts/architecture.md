@@ -719,4 +719,256 @@ CLI 参数（--source / --all）
 7. `sources/youtube.py`
 8. `validate.py` 统一入口（调度器 + CLI）
 9. 爬虫源（`awin.py` / `cartsee.py` / `partnerboost.py`）
+
+---
+
+## Phase 2 Architecture — 数据采集与落库
+
+> **版本记录：** 本章节由 CC Phase2（2026-04-15）新增，Phase 1 架构全部保持不变。
+
+### Phase 2 整体架构
+
+**代码位置：** `bi/python_sdk/outdoor_collector/`（独立部署单元，与主工具无依赖）
+
+**调用关系：**
+
+```
+海豚调度（DolphinScheduler）
+    ↓ 执行脚本
+collectors/{source}_collector.py
+    ↓ 调用 SDK 客户端
+sdk/{source}/client.py  →  外部 API
+    ↓
+common/doris_writer.py  →  Apache Doris (pymysql)
+    ↑
+common/watermark.py   （水位线读写）
+common/chunked_fetch.py（分片并发，大表使用）
+```
+
+**核心设计原则：**
+- collectors 层只含业务逻辑，认证/HTTP 细节全部封装在 SDK 层
+- 公共工具（水位线、分片、写入）集中在 common/ 层，不在 collectors 中重复实现
+- 各 collector 独立运行，互不干扰，单个失败不传染其他
+
+### 目录结构
+
+```
+bi/python_sdk/outdoor_collector/
+├── doris_config.py              # Doris 连接单例（与现有各目录模式一致，自含）
+├── sdk/                         # API 客户端层
+│   ├── __init__.py
+│   ├── tiktok/
+│   │   ├── __init__.py
+│   │   ├── auth.py              # refresh_token 换取 access_token、HmacSHA256 签名、shop_cipher 获取
+│   │   └── client.py            # TikTokClient 类，接口方法封装（订单、商品、财务等）
+│   ├── triplewhale/
+│   │   ├── __init__.py
+│   │   ├── auth.py              # API Key 认证（X-API-KEY header）
+│   │   └── client.py            # TripleWhaleClient 类，GraphQL/REST 请求封装、表路由
+│   └── dingtalk/
+│       ├── __init__.py
+│       ├── auth.py              # app_key/secret → access_token 获取与有效期内复用
+│       └── client.py            # DingTalkClient 类，Bitable 记录分页读取
+├── common/                      # 采集基础设施
+│   ├── __init__.py
+│   ├── watermark.py             # 水位线管理（读取 / 更新 etl_watermark 表）
+│   ├── chunked_fetch.py         # 分片并发框架
+│   └── doris_writer.py          # upsert 写入封装
+├── collectors/                  # 各数据源采集脚本
+│   ├── tw_collector.py          # TripleWhale（Story 7.1）
+│   ├── tiktok_collector.py      # TikTok Shop（Story 7.2）
+│   ├── dingtalk_collector.py    # 钉钉 Bitable（Story 7.3）
+│   ├── youtube_collector.py     # YouTube 统计（Story 7.4，依赖 7.3 完成）
+│   ├── awin_collector.py        # Awin 联盟 API（Story 7.5）
+│   └── partnerboost_collector.py # PartnerBoost 爬虫（Story 8.2）
+└── requirements.txt             # 独立依赖列表
+```
+
+### SDK 层设计
+
+**设计原则：** 每个 SDK 客户端隐藏认证细节，向 collector 暴露业务方法。
+
+#### TikTokClient
+
+```python
+class TikTokClient:
+    def __init__(self):
+        # 从 .env 读取 app_key, app_secret, refresh_token, shop_id
+        ...
+
+    def _refresh_access_token(self) -> str:
+        """每次调用前重新获取，不缓存。使用 HmacSHA256 签名。"""
+
+    def _get_shop_cipher(self) -> str:
+        """通过 /api/shops/get_authorized_shop 自动获取。"""
+
+    def get_orders(self, start_time: int, end_time: int) -> list[dict]:
+        ...
+
+    # 其他接口方法（商品、财务等）
+```
+
+**关键约束（继承自 Phase 1 验证结论）：**
+- TikTok access_token **每次重新获取，不可缓存**
+- 签名时间戳需使用略靠前的时间（参照 Java 历史实现偏移处理）
+
+#### TripleWhaleClient
+
+```python
+class TripleWhaleClient:
+    def __init__(self):
+        # 从 .env 读取 api_key，shopDomain = piscifun.myshopify.com
+
+    def query_table(self, table_name: str, start_date: str, end_date: str) -> list[dict]:
+        """按表名路由，内部区分 pixel_orders_table / sessions_table 等。"""
+```
+
+#### DingTalkClient
+
+```python
+class DingTalkClient:
+    def __init__(self):
+        # 从 .env 读取 app_key, app_secret
+        self._access_token: str | None = None
+        self._token_expires_at: float = 0
+
+    def _get_access_token(self) -> str:
+        """有效期内复用，到期重新获取，避免重复换取。"""
+
+    def get_bitable_records(self, space_id: str, sheet_id: str, page_token: str = None) -> list[dict]:
+        """分页读取 Bitable 记录。"""
+```
+
+**凭证加载规范：** SDK 层全部从 `.env` 加载（`python-dotenv`），不从主工具的 `config/credentials.py` 导入（两个独立模块，互不依赖）。
+
+### Doris 写入封装
+
+```python
+# common/doris_writer.py
+
+def write_to_doris(
+    table: str,
+    records: list[dict],
+    unique_keys: list[str],
+    batch_size: int = 1000
+) -> int:
+    """
+    幂等 upsert 写入。
+    返回写入行数。
+    """
+    conn = DorisConfig().get_connection()
+    cursor = conn.cursor()
+    # 写入前设置 Doris upsert 参数
+    cursor.execute("SET enable_unique_key_partial_update = true")
+    cursor.execute("SET enable_insert_strict = false")
+    # 分 batch 写入，使用 executemany
+    ...
+```
+
+**日志格式：** `[{source}][{table}] 写入 {n} 行 ... 成功/失败`
+
+### 水位线机制
+
+**etl_watermark 表结构（Doris Unique Key 模型）：**
+
+```sql
+CREATE TABLE etl_watermark (
+    source          VARCHAR(64)   NOT NULL,
+    table_name      VARCHAR(128)  NOT NULL,
+    last_success_time DATETIME,
+    run_mode        VARCHAR(16),      -- 'full' | 'incremental'
+    updated_at      DATETIME,
+    -- 分片字段（Story 6.3 新增）
+    chunk_start     DATE,
+    chunk_end       DATE,
+    chunk_status    VARCHAR(16)       -- 'pending' | 'done' | 'failed'
+) UNIQUE KEY (source, table_name);
+```
+
+**水位线接口：**
+
+```python
+# common/watermark.py
+
+def get_watermark(source: str, table: str) -> dict | None:
+    """返回水位线记录，无记录时返回 None（触发全量）。"""
+
+def update_watermark(source: str, table: str, success_time: datetime) -> None:
+    """仅在成功写入 Doris 后调用，失败时不更新。"""
+
+def reset_watermark(source: str, table: str) -> None:
+    """--mode full 参数触发，强制重置水位线。"""
+```
+
+**运行模式判断逻辑：**
+
+```python
+wm = get_watermark(source, table)
+if wm is None or mode == "full":
+    # 全量拉取（mode full 时先 reset_watermark）
+    start_date = EARLIEST_DATE
+else:
+    # 增量拉取
+    start_date = wm["last_success_time"]
+```
+
+### 分片并发框架
+
+适用场景：TripleWhale `sessions_table` 等千万级数据量的历史全量拉取。
+
+```python
+# common/chunked_fetch.py
+
+def chunked_fetch(
+    source: str,
+    table: str,
+    fetch_fn: Callable[[str, str], list[dict]],  # (start_date, end_date) -> records
+    start: date,
+    end: date,
+    chunk_days: int = 30,
+    workers: int = 4
+) -> int:
+    """
+    将 [start, end] 按 chunk_days 分片，使用 ThreadPoolExecutor 并发执行。
+    每个分片独立维护 chunk_status（pending/done/failed）。
+    重启时跳过 done 分片，仅重跑 pending/failed。
+    返回总写入行数。
+    """
+```
+
+**并发约束：**
+- 默认 `workers=4`，受 API Rate Limit 约束，调用方可按数据源调整
+- 单片失败记录 `failed` 状态并打印完整错误，不影响其他分片
+
+### Phase 2 技术决策汇总
+
+| # | 决策点 | 结论 |
+|---|--------|------|
+| 1 | 调度机制 | 海豚调度（DolphinScheduler），直接调用脚本路径 |
+| 2 | Doris 连接 | pymysql 直连，沿用 `doris_config.py` 单例模式 |
+| 3 | SDK 复用范围 | tiktok / triplewhale / dingtalk 三个客户端，collector 不重复实现认证 |
+| 4 | YouTube 数据来源 | 从 Doris 已入库钉钉表读取 URL，依赖 Story 7.3 先完成 |
+| 5 | CartSee | 暂缓（页面结构变更），Story 8.1 保留占位，不进入当前排期 |
+| 6 | 部署方式 | `outdoor_collector/` 整目录 rsync，自含依赖，无需额外 pip install 内部 SDK |
+| 7 | `doris_config.py` | 各业务目录自含副本（与现有模式一致），不共享单一实例跨目录 |
+
+### Phase 2 实现顺序
+
+```
+Story 6.0（SDK 层：tiktok / triplewhale / dingtalk 客户端）
+    ↓
+Story 6.1（目录初始化 + doris_writer.py 写入封装）
+    ↓
+Story 6.2（watermark.py 水位线管理器）
+    ↓
+Story 6.3（chunked_fetch.py 分片并发框架）
+    ↓
+Story 7.1（TripleWhale 采集）→ Story 7.2（TikTok 采集）→ Story 7.3（钉钉采集）
+    ↓
+Story 7.4（YouTube 采集，依赖 7.3）→ Story 7.5（Awin 采集）
+    ↓
+Story 8.2（PartnerBoost 爬虫）→ Story 8.3（Facebook Business Suite 爬虫）
+```
+
+**注意：** Story 8.1（CartSee）保持 `blocked` 状态，不在当前排期内。
 10. `sources/social_media.py` stub

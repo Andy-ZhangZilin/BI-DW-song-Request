@@ -630,3 +630,259 @@ FR30: Epic 1 — requirements.txt 依赖管理
 **Given** 集成测试套件
 **When** 运行 `pytest tests/ -m "not integration"`
 **Then** 所有单元测试通过，无需真实 API 凭证或网络连接
+
+
+---
+
+## Phase 2：数据采集与落库
+
+> **版本记录：** 以下 Epic 6/7/8 由 CC Phase2 Sprint Change Proposal（2026-04-15）新增，Phase 1 Epic 1~5 保持不变。
+
+---
+
+## Epic 6：数据采集基础设施
+
+**目标：** 在 `bi/python_sdk/outdoor_collector/` 下建立采集模块完整基础，包含 API 客户端 SDK 层、公共工具层（水位线、分片并发、写入封装）。
+
+**完成标准：**
+- `sdk/`、`common/`、`collectors/` 目录结构完整，各含 `__init__.py`
+- 三个 SDK 客户端（TikTokClient / TripleWhaleClient / DingTalkClient）可独立实例化并通过认证
+- `write_to_doris()` 可成功执行 upsert 写入
+- 水位线读取/更新逻辑通过单元测试
+- 分片并发框架可正确分片并支持断点续传
+
+---
+
+### Story 6.0：API 客户端 SDK 层建立
+
+**作为**数据工程师，
+**我希望**在 `outdoor_collector/sdk/` 下建立 TikTok、TripleWhale、钉钉三个 API 客户端模块，
+**以便**后续所有采集脚本可复用统一的认证与请求封装，不重复实现。
+
+**验收标准：**
+
+- 创建 `sdk/tiktok/`：封装 refresh_token → access_token 换取（每次重新获取）、HmacSHA256 请求签名、shop_cipher 自动获取；对外暴露 `TikTokClient` 类
+- 创建 `sdk/triplewhale/`：封装 API Key 认证（X-API-KEY header）、GraphQL/REST 请求发送、基础错误重试；对外暴露 `TripleWhaleClient` 类
+- 创建 `sdk/dingtalk/`：封装 app_key/secret → access_token 获取与有效期内复用（避免重复换取）、Bitable 记录分页读取；对外暴露 `DingTalkClient` 类
+- 凭证统一通过 `.env` 加载（`python-dotenv`），SDK 内不硬编码任何密钥
+- 各客户端提供统一日志格式：`[sdk][{source}] 操作描述 ... 成功/失败`
+- 认证失败抛出明确异常，不静默返回空
+
+**前置依赖：** 无
+
+---
+
+### Story 6.1：目录初始化与公共写入工具
+
+**作为**数据工程师，
+**我希望**初始化 `outdoor_collector/` 目录结构并建立公共 Doris 写入封装，
+**以便**后续采集脚本有统一的写入入口。
+
+**验收标准：**
+
+- 创建完整目录结构：`sdk/`、`common/`、`collectors/`，各含 `__init__.py`
+- 在目录根放置 `doris_config.py`（沿用单例模式，与现有业务目录保持一致）
+- `common/doris_writer.py` 提供统一 upsert 写入封装：`write_to_doris(table, records, unique_keys)`
+  - 内部使用 pymysql + `executemany`，batch_size=1000
+  - 写入前执行 `SET enable_unique_key_partial_update = true` 和 `SET enable_insert_strict = false`
+  - 日志格式：`[{source}][{table}] 写入 {n} 行 ... 成功/失败`
+- `requirements.txt` 列出所有第三方依赖（requests、pymysql、playwright、python-dotenv 等）
+
+**前置依赖：** Story 6.0（SDK 层）必须先完成
+
+---
+
+### Story 6.2：水位线管理器
+
+**作为**数据工程师，
+**我希望**有一套水位线管理机制，自动判断首次全量还是后续增量，
+**以便**采集脚本无需手动区分运行模式。
+
+**验收标准：**
+
+- 在 Doris 中创建 `etl_watermark` 表，Unique Key 模型，字段：`source`、`table_name`、`last_success_time`、`run_mode`、`updated_at`
+- 提供 `get_watermark(source, table)` → 返回水位线记录或 `None`
+- 提供 `update_watermark(source, table, success_time)` → 仅在成功写入 Doris 后调用
+- 提供 `reset_watermark(source, table)` → `--mode full` 参数触发
+- 首次运行（无水位线记录）→ 自动触发全量拉取
+- 后续运行 → 读取水位线，以 `last_success_time` 为 `start_date` 做增量
+- 水位线更新在每次成功写入 Doris 后执行，失败时不更新
+
+**前置依赖：** Story 6.1（目录初始化）
+
+---
+
+### Story 6.3：分片并发与断点续传框架
+
+**作为**数据工程师，
+**我希望**大数据量表（如 TripleWhale sessions_table）的全量拉取支持分片并发和断点续传，
+**以便**避免单次长时间拉取超时或中断后需从头重来。
+
+**验收标准：**
+
+- `etl_watermark` 表扩展分片状态字段：`chunk_start`、`chunk_end`、`chunk_status`（pending/done/failed）
+- 全量拉取时按时间区间自动分片，分片粒度可配置（默认 `chunk_days=30`）
+- 支持并发执行多个分片，并发数可配置（默认 `workers=4`），受 API Rate Limit 约束
+- 重启时自动跳过 `done` 状态分片，仅重跑 `pending` 和 `failed` 分片
+- 单片失败不影响其他分片继续执行，失败分片状态记为 `failed` 并打印完整错误
+- 提供通用接口：`chunked_fetch(source, table, fetch_fn, start, end, chunk_days, workers)`
+
+**前置依赖：** Story 6.2（水位线管理器）
+
+---
+
+## Epic 7：API 类数据源采集落库
+
+**目标：** 将 5 个 API 数据源（TripleWhale、TikTok Shop、钉钉多维表、YouTube、Awin）的原始数据采集并写入对应 Doris 表。
+
+**完成标准：**
+- 全部 5 个 API 数据源成功首次全量入库 Doris
+- 水位线机制验证通过（首次全量 → 后续增量）
+- 写入幂等性验证通过（重复运行不产生重复数据）
+
+---
+
+### Story 7.1：TripleWhale 数据采集落库
+
+**作为**数据工程师，
+**我希望**能将 TripleWhale 的全部已验证表数据采集并写入 Doris，
+**以便**运营团队可以基于完整历史数据构建利润表和营销表现报表。
+
+**验收标准：**
+
+- 调用 `sdk/triplewhale/` 客户端（Story 6.0），不重复实现认证逻辑
+- 支持 TripleWhale 全部已验证表（pixel_orders_table、pixel_joined_tvf、sessions_table、product_analytics_tvf 等 10 张）
+- `sessions_table`（千万级数据）必须启用分片并发框架（Story 6.3），分片粒度和并发数可配置
+- 各表独立维护水位线，互不干扰
+- 增量模式：使用时间字段过滤（`start_date`/`end_date`）
+- 写入策略：upsert，主键冲突则更新
+- 单表失败不影响其他表继续执行
+- 运行日志清晰记录每张表的拉取行数和写入状态
+
+**前置依赖：** Story 6.0、6.1、6.2（sessions_table 还需 6.3）
+
+---
+
+### Story 7.2：TikTok Shop 数据采集落库
+
+**作为**数据工程师，
+**我希望**能将 TikTok Shop 的订单、财务等数据采集并写入 Doris，
+**以便**后续构建 TikTok 销售表。
+
+**验收标准：**
+
+- 调用 `sdk/tiktok/` 客户端（Story 6.0），不重复实现 HmacSHA256 签名和 token 换取逻辑
+- 支持已验证的 6 个接口路由（订单、商品、财务等）
+- 增量模式：使用订单时间字段过滤，**归因窗口回溯 3 天**（补充晚到订单）
+- 各接口独立水位线
+- 写入策略：upsert，以订单 ID 为主键
+
+**前置依赖：** Story 6.0、6.1、6.2
+
+---
+
+### Story 7.3：钉钉多维表数据采集落库
+
+**作为**数据工程师，
+**我希望**能将钉钉多维表（Bitable）中的业务数据采集并写入 Doris，
+**以便**集中存储 KOL 信息、合作价格等内部管理数据。
+
+**验收标准：**
+
+- 调用 `sdk/dingtalk/` 客户端（Story 6.0），不重复实现 token 管理逻辑
+- 支持已验证的多维表（包含 `kol_tidwe_内容上线` 等 Sheet）
+- 增量策略：全量拉取 + upsert（钉钉 API 无时间过滤接口）
+- 关联字段返回空时，Doris 对应字段写 NULL，不报错
+- 写入策略：upsert，以钉钉行 ID 为主键
+
+**前置依赖：** Story 6.0、6.1、6.2
+
+---
+
+### Story 7.4：YouTube 视频统计数据采集落库（钉钉 URL 驱动）
+
+**作为**数据工程师，
+**我希望**基于钉钉表中的视频 URL 字段，自动拉取对应 YouTube 视频的统计数据并写入 Doris，
+**以便** KOL 内容表可以关联真实播放数据。
+
+**验收标准：**
+
+- 数据来源驱动：从 Doris 中已入库的钉钉 `kol_tidwe_内容上线` 表读取 `内容发布链接` 字段
+- 仅处理链接为 YouTube 域名的记录（`youtube.com/watch?v=` 或 `youtu.be/`）
+- 提取 `video_id` 后调用 YouTube Data API v3 获取统计数据（viewCount、likeCount、commentCount 等）
+- 写入 Doris 新表（YouTube 统计表），通过 `video_id` 或钉钉行 ID 与 KOL 表关联
+- 增量策略：仅处理钉钉表中新增行（video_id 在 YouTube 统计表中不存在）；已存在的定期刷新统计数据
+- **执行依赖：Story 7.3 必须先完成**（钉钉数据已入库）
+
+**前置依赖：** Story 7.3（钉钉数据已入库）
+
+---
+
+### Story 7.5：Awin 联盟数据采集落库
+
+**作为**数据工程师，
+**我希望**能将 Awin 联盟交易数据采集并写入 Doris，
+**以便**构建联盟营销渠道的佣金和转化报表。
+
+**验收标准：**
+
+- 支持 Awin Publisher API 的交易数据（Transactions）和聚合报表
+- 增量模式：使用 `start_date`/`end_date` 时间过滤，**佣金状态回溯窗口可配置**（因佣金可能延迟确认）
+- 写入策略：upsert，以 transaction_id 为主键
+
+**前置依赖：** Story 6.0、6.1、6.2
+
+---
+
+## Epic 8：爬虫类数据源采集落库
+
+**目标：** 将爬虫类数据源（PartnerBoost、Facebook Business Suite）的数据采集并写入对应 Doris 表。CartSee 暂缓。
+
+**完成标准：**
+- PartnerBoost 和 Facebook Business Suite 成功首次入库 Doris
+- 幂等写入验证通过
+- 验证码中断处理验证通过
+
+---
+
+### Story 8.1：CartSee EDM 数据采集落库
+
+> **状态：`blocked - 暂缓`**
+>
+> CartSee 爬虫页面结构已变更，原有方案不可用。待确认新的数据获取方式后再启动开发。本 Story 保留占位，不进入当前开发排期。
+
+---
+
+### Story 8.2：PartnerBoost 联盟数据采集落库
+
+**作为**数据工程师，
+**我希望**能每日自动抓取 PartnerBoost 的当天联盟数据并写入 Doris，
+**以便**构建联盟营销渠道报表。
+
+**验收标准：**
+
+- 采用 Playwright 自动登录 PartnerBoost 后台（`sync_playwright`，禁止 async 版本）
+- **增量策略：每日定时执行，拉取当天数据**（平台 UI 无日期筛选器，仅展示当天）
+- 写入策略：upsert，以日期 + 唯一记录 ID 为主键，确保幂等写入
+- 遇验证码时抛出 `RuntimeError` 并中断，提示手动干预，不静默失败
+- 不依赖水位线框架（每日全量当天数据）
+
+**前置依赖：** Story 6.1（写入封装）
+
+---
+
+### Story 8.3：Facebook Business Suite 社媒数据采集落库
+
+**作为**数据工程师，
+**我希望**能将 Facebook Business Suite 的帖子/Reels 数据采集并写入 Doris，
+**以便**构建社媒内容表现报表。
+
+**验收标准：**
+
+- 采用 Playwright 登录 Meta Business Suite，抓取帖子和 Reels 列表（`sync_playwright`）
+- 增量策略：全量拉取 + upsert（UI 时间筛选稳定性待验证后可扩展增量）
+- 写入字段：帖子 ID、标题、发布日期、状态、覆盖人数、获赞数、评论数、分享次数
+- 写入策略：upsert，以帖子 ID 为主键
+- 遇验证码时抛出 `RuntimeError`，不静默失败
+
+**前置依赖：** Story 6.1（写入封装）
