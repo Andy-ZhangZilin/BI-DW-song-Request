@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: code review of 7-2-tiktok-shop数据采集落库 (2026-04-16)
+
+- W1: `last_ok` 类型假设 — 水位线若返回字符串而非 datetime 对象，`timedelta` 运算会崩溃；依赖 Story 6.2 保证，暂 defer
+- W2: 翻页循环缺少最大页数保护 — return_refund / affiliate_creator_orders / video_performances 等无限循环风险，建议加 max_pages 计数器
+- W3: `datetime.utcnow()` vs timezone-aware datetime — 全 codebase 需统一升级至 `datetime.now(timezone.utc)`
+- W4: `_fetch_product_ids` / `_fetch_campaigns` 无翻页（硬限 50 条）— 大规模店铺数据不完整，后续补充翻页逻辑
+- W5: full mode `reset_watermark` 批量执行后进程中断无法原子恢复 — 架构设计问题，考虑每路由采集后再更新水位的设计
+- W6: `sys.path.insert` 永久修改 — bi/ 子模块既有架构模式，统一处理
+
 ## Deferred from: code review of 8-2-partnerboost联盟数据采集落库 (2026-04-15)
 
 - 登录重定向校验过于宽松 — `lambda url: "login" not in url` 对错误页面也通过；与 Story 4.3 相同模式，暂缓
@@ -175,3 +184,13 @@
 - last_success_time 从 pymysql 返回类型不保证 datetime [watermark.py:65] — 驱动版本依赖，项目级问题
 - 并发写入 update_watermark 无原子性 [watermark.py:73-89] — 调度器单实例场景，pre-existing
 - except Exception 捕获过宽 [watermark.py:45,68,100,118] — 与 doris_writer.py 一致的既有模式
+
+## Deferred from: code review of 7-3-钉钉多维表数据采集落库 (2026-04-16)
+
+- `KeyError` on missing env vars (collectors/dingtalk_collector.py): by design fail-fast; key name appears in error; consider explicit message in future
+- `datetime.utcnow()` deprecated: Python 3.11 still works; address when upgrading Python version
+- empty `record_id=""` when DingTalk recordId absent (sdk/dingtalk/client.py): DingTalk API contract guarantees recordId; theoretical only
+- `_is_ms_timestamp` matches large negative numbers (collectors/dingtalk_collector.py): DingTalk timestamps are not negative; theoretical boundary
+- `write_to_doris` key-consistency failure on sparse API responses (common/doris_writer.py): DingTalk bitable schema is fixed per sheet
+- `_flatten_value` + `linkedRecordIds` implicit contract (sdk/dingtalk/client.py): currently correct; add explicit guard or comment in future
+- `sys.path.insert` at module level (collectors/dingtalk_collector.py): project-wide pattern; pre-existing
