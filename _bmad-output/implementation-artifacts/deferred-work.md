@@ -154,6 +154,17 @@
 - logger.error + re-raise 重复日志 [common/doris_writer.py:75-76] — 可接受，有助排查
 - DB_CONFIG 未指定 charset [doris_config.py:7-13] — 复制自既有模式，需统一评估
 
+## Deferred from: code review of 6-3-分片并发与断点续传框架 (2026-04-16)
+
+- done_chunks 比较可能因 pymysql DATETIME 返回类型不一致（str vs datetime）而失效 [chunk_runner.py:~103] — pymysql 默认返回 datetime，实际风险低；升级 driver 版本时验证
+- created_at 在每次 upsert 时被覆盖（write_to_doris 全量替换行，无 insert-only 支持） — write_to_doris 架构限制，需要时可改用原生 SQL INSERT ... ON DUPLICATE KEY UPDATE
+- failed_count 修改仅在主线程（当前安全），但模式脆弱，未来若移入线程内会引入竞态 — 可改用 threading.Lock 或 concurrent.futures 计数器
+- sys.path.insert 全局路径污染 [chunk_runner.py:15] — 与 watermark.py 一致的既有项目模式，统一处理
+- ensure_chunk_table 每次 chunked_fetch 均执行 DDL（幂等但有额外 DB 往返） — 可加模块级 _table_ensured 标志避免重复；当前频率低不影响性能
+- fetch_fn 无超时/取消机制，线程池可能永久阻塞 — 可由调用方在 fetch_fn 内部设置超时；框架层加超时属 out-of-scope
+- pending 状态在进程崩溃后残留，无 advisory locking — 已知限制；重启后 pending 分片会重跑，行为正确但无法防止并发重复执行
+- datetime.utcnow() Python 3.12+ 已废弃 [chunk_runner.py:130] — 项目统一使用 naive UTC，升级 Python 时处理（同 watermark.py）
+
 ## Deferred from: code review of 6-2-水位线管理器 (2026-04-15)
 
 - sys.path.insert 模块级 hack [watermark.py:11] — 与 doris_writer.py 一致的既有项目模式
