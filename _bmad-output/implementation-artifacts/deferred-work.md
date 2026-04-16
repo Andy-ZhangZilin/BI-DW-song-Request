@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: code review of 7-2-tiktok-shop数据采集落库 (2026-04-16)
+
+- W1: `last_ok` 类型假设 — 水位线若返回字符串而非 datetime 对象，`timedelta` 运算会崩溃；依赖 Story 6.2 保证，暂 defer
+- W2: 翻页循环缺少最大页数保护 — return_refund / affiliate_creator_orders / video_performances 等无限循环风险，建议加 max_pages 计数器
+- W3: `datetime.utcnow()` vs timezone-aware datetime — 全 codebase 需统一升级至 `datetime.now(timezone.utc)`
+- W4: `_fetch_product_ids` / `_fetch_campaigns` 无翻页（硬限 50 条）— 大规模店铺数据不完整，后续补充翻页逻辑
+- W5: full mode `reset_watermark` 批量执行后进程中断无法原子恢复 — 架构设计问题，考虑每路由采集后再更新水位的设计
+- W6: `sys.path.insert` 永久修改 — bi/ 子模块既有架构模式，统一处理
+
 ## Deferred from: code review of 8-2-partnerboost联盟数据采集落库 (2026-04-15)
 
 - 登录重定向校验过于宽松 — `lambda url: "login" not in url` 对错误页面也通过；与 Story 4.3 相同模式，暂缓
