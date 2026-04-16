@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-16  # 8-2 done；8-3 done；6-2 done；6-3 done；7-1 done
+last_updated: 2026-04-16  # 8-2 done；8-3 done；6-2 done；6-3 done；7-1 done；7-3 done
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -104,7 +104,7 @@ development_status:
   epic-7: in-progress
   7-1-triplewhale数据采集落库: done
   7-2-tiktok-shop数据采集落库: backlog
-  7-3-钉钉多维表数据采集落库: backlog
+  7-3-钉钉多维表数据采集落库: done
   7-4-youtube视频统计数据采集落库: backlog
   7-5-awin联盟数据采集落库: backlog
   epic-7-retrospective: optional

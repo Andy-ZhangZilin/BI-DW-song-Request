@@ -175,3 +175,13 @@
 - last_success_time 从 pymysql 返回类型不保证 datetime [watermark.py:65] — 驱动版本依赖，项目级问题
 - 并发写入 update_watermark 无原子性 [watermark.py:73-89] — 调度器单实例场景，pre-existing
 - except Exception 捕获过宽 [watermark.py:45,68,100,118] — 与 doris_writer.py 一致的既有模式
+
+## Deferred from: code review of 7-3-钉钉多维表数据采集落库 (2026-04-16)
+
+- `KeyError` on missing env vars (collectors/dingtalk_collector.py): by design fail-fast; key name appears in error; consider explicit message in future
+- `datetime.utcnow()` deprecated: Python 3.11 still works; address when upgrading Python version
+- empty `record_id=""` when DingTalk recordId absent (sdk/dingtalk/client.py): DingTalk API contract guarantees recordId; theoretical only
+- `_is_ms_timestamp` matches large negative numbers (collectors/dingtalk_collector.py): DingTalk timestamps are not negative; theoretical boundary
+- `write_to_doris` key-consistency failure on sparse API responses (common/doris_writer.py): DingTalk bitable schema is fixed per sheet
+- `_flatten_value` + `linkedRecordIds` implicit contract (sdk/dingtalk/client.py): currently correct; add explicit guard or comment in future
+- `sys.path.insert` at module level (collectors/dingtalk_collector.py): project-wide pattern; pre-existing
