@@ -9,6 +9,15 @@
 - 异常链可能泄露凭证信息 — 内部工具，受控日志环境，暂缓
 - `partner` 为空字符串时复合唯一键可能碰撞 — 真实数据中不应为空，异常情况后续处理
 
+## Deferred from: code review of 8-3-facebook-business-suite数据采集落库 (2026-04-15)
+
+- Fallback post_id MD5 碰撞风险：同标题+日期的两条帖子 hash 相同，Doris upsert 覆盖一条 — 采集场景内容碰撞极低概率，后续可改为更强 hash 或用 URL hash
+- _login() 路径 A/B 各有 time.sleep(15) 硬编码等待 — 与参考实现 social_media.py 保持一致，后续优化
+- SESSION_FILE 目录创建无 mode=0o700，在多用户机器上 session 文件可被他人读取 — 生产环境单用户部署，暂不处理
+- page.type() 逐键入密码，若开启 Playwright 追踪则密码明文记录 — 未启用追踪，后续可改为 page.fill()
+- _try_session() 中 time.sleep(5) 硬编码，慢网络可能 session 未完全写入 — 与参考实现一致
+- 正则 \d{10,} 排除短数字 ID，老帖子可能触发降级 fallback — 10位以上覆盖当前 Facebook ID 格式
+
 ## Deferred from: code review of 1-1-项目结构初始化 (2026-04-03)
 
 - `requirements.txt` 未锁定依赖版本 — 待全部功能实现后 `pip freeze` 固定（架构文档指定时间点）
@@ -144,3 +153,14 @@
 - DorisConfig 单例非线程安全 [doris_config.py:3-13] — 项目级既定模式
 - logger.error + re-raise 重复日志 [common/doris_writer.py:75-76] — 可接受，有助排查
 - DB_CONFIG 未指定 charset [doris_config.py:7-13] — 复制自既有模式，需统一评估
+
+## Deferred from: code review of 6-2-水位线管理器 (2026-04-15)
+
+- sys.path.insert 模块级 hack [watermark.py:11] — 与 doris_writer.py 一致的既有项目模式
+- datetime.utcnow() Python 3.12 已废弃 [watermark.py:82] — 当前 3.11.2，项目统一模式，升级 Python 时处理
+- SELECT * 脆弱于 schema 变更 [watermark.py:63] — 内部 5 列表，pre-existing 模式
+- source/table 参数无长度校验 VARCHAR(64/128) [watermark.py:57,112] — 内部工具，doris_writer.py 同样无校验
+- success_time 无时区信息 [watermark.py:79-82] — 项目统一使用 naive UTC
+- last_success_time 从 pymysql 返回类型不保证 datetime [watermark.py:65] — 驱动版本依赖，项目级问题
+- 并发写入 update_watermark 无原子性 [watermark.py:73-89] — 调度器单实例场景，pre-existing
+- except Exception 捕获过宽 [watermark.py:45,68,100,118] — 与 doris_writer.py 一致的既有模式
