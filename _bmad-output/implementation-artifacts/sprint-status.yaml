@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-15  # Story 8.3 done（code review passed）；6-1 code review done
+last_updated: 2026-04-16  # 8-2 done；8-3 done；6-2 done
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -113,6 +113,6 @@ development_status:
   # Story 8.1 (CartSee) 暂缓: 爬虫页面结构已变更，待确认新方案
   epic-8: in-progress
   8-1-cartsee-edm数据采集落库: blocked
-  8-2-partnerboost联盟数据采集落库: backlog
+  8-2-partnerboost联盟数据采集落库: done
   8-3-facebook-business-suite数据采集落库: done
   epic-8-retrospective: optional
