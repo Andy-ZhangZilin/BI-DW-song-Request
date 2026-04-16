@@ -1,6 +1,16 @@
 # Deferred Work
 
-## Deferred from: code review of 7-2-tiktok-shop数据采集落库 (2026-04-16)
+## Deferred from: code review of 7-4-youtube视频统计数据采集落库 (2026-04-16)
+
+- API key 作为 query param 可能泄露 — YouTube Data API 标准用法，与 sources/youtube.py 一致，内部工具
+- SQL 表名拼接 [collectors/youtube_collector.py:101] — DINGTALK_CONTENT_TABLE 为模块级常量，非用户输入，与 doris_writer.py 既有模式一致
+- DB 连接失败无 try-except — 与 dingtalk_collector.py 等既有 collector fail-fast 模式一致
+- 无 HTTP 重试逻辑 — 与 awin_collector.py 一致，pre-existing 项目模式
+- `resp.json()` 未捕获 JSONDecodeError — 与 awin_collector.py 一致（deferred-work.md 中已有记录）
+- `datetime.utcnow()` Python 3.12 废弃 — 项目统一 naive UTC，Python 3.11 环境，升级 Python 时处理
+- watermark 更新失败后数据已写入 — 与 awin_collector.py 相同模式，pre-existing
+
+
 
 - W1: `last_ok` 类型假设 — 水位线若返回字符串而非 datetime 对象，`timedelta` 运算会崩溃；依赖 Story 6.2 保证，暂 defer
 - W2: 翻页循环缺少最大页数保护 — return_refund / affiliate_creator_orders / video_performances 等无限循环风险，建议加 max_pages 计数器
