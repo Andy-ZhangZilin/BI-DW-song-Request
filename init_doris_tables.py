@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Initialize Doris test database tables for outdoor-data-validator"""
+"""Initialize Doris ODS tables for outdoor-data-validator (Phase 2).
+
+ODS 层设计原则（ARCH14）：
+- 包含 API 接口返回的所有字段，不做业务筛选
+- 英文字段直接使用原名；中文字段转为英文 snake_case，COMMENT 写原中文
+- 嵌套 list/dict 序列化为 JSON TEXT
+- 每表统一追加 etl_time DATETIME COMMENT 'ETL写入时间'
+
+全量拉取起始时间（ARCH16）：EARLIEST_DATE = "2026-03-01"
+测试完成后统一修改此常量以拉取更早历史数据。
+"""
 
 import sys
 import os
@@ -9,277 +19,1234 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bi', 'python_sdk', '
 import pymysql
 from doris_config import DorisConfig
 
-# SQL statements to create all required tables
+# ---------------------------------------------------------------------------
+# TripleWhale ODS 表
+# ---------------------------------------------------------------------------
+
+_TW_PIXEL_ORDERS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_pixel_orders (
+    order_id VARCHAR(255) COMMENT 'Order ID (unique key)',
+    event_date DATE COMMENT 'Event date',
+    event_hour INT COMMENT 'Event hour',
+    shop_id VARCHAR(100) COMMENT 'Shop ID',
+    shop_name VARCHAR(255) COMMENT 'Shop name',
+    shop_timezone VARCHAR(100) COMMENT 'Shop timezone',
+    triple_id VARCHAR(255) COMMENT 'Triple Whale internal ID',
+    customer_id VARCHAR(255) COMMENT 'Customer ID',
+    customer_email VARCHAR(500) COMMENT 'Customer email',
+    customer_first_name VARCHAR(255) COMMENT 'Customer first name',
+    customer_last_name VARCHAR(255) COMMENT 'Customer last name',
+    customer_tags TEXT COMMENT 'Customer tags (JSON)',
+    is_new_customer BOOLEAN COMMENT 'Is new customer',
+    is_subscription_order BOOLEAN COMMENT 'Is subscription order',
+    is_first_order_in_subscription BOOLEAN COMMENT 'Is first order in subscription',
+    order_name VARCHAR(255) COMMENT 'Order name',
+    order_revenue DECIMAL(18,4) COMMENT 'Order revenue',
+    gross_sales DECIMAL(18,4) COMMENT 'Gross sales',
+    gross_product_sales DECIMAL(18,4) COMMENT 'Gross product sales',
+    discount_amount DECIMAL(18,4) COMMENT 'Discount amount',
+    discount_code VARCHAR(255) COMMENT 'Discount code',
+    discount_codes TEXT COMMENT 'Discount codes (JSON)',
+    refund_money DECIMAL(18,4) COMMENT 'Refund money',
+    shipping_price DECIMAL(18,4) COMMENT 'Shipping price',
+    shipping_costs DECIMAL(18,4) COMMENT 'Shipping costs',
+    shipping_tax DECIMAL(18,4) COMMENT 'Shipping tax',
+    taxes DECIMAL(18,4) COMMENT 'Taxes',
+    handling_fees DECIMAL(18,4) COMMENT 'Handling fees',
+    payment_gateway_costs DECIMAL(18,4) COMMENT 'Payment gateway costs',
+    cogs DECIMAL(18,4) COMMENT 'Cost of goods sold',
+    cost_of_goods DECIMAL(18,4) COMMENT 'Cost of goods',
+    currency VARCHAR(20) COMMENT 'Currency',
+    currency_rate DECIMAL(18,6) COMMENT 'Currency rate',
+    custom_gross_sales DECIMAL(18,4) COMMENT 'Custom gross sales',
+    custom_net_revenue DECIMAL(18,4) COMMENT 'Custom net revenue',
+    custom_gross_profit DECIMAL(18,4) COMMENT 'Custom gross profit',
+    custom_combined_gross_sales DECIMAL(18,4) COMMENT 'Custom combined gross sales',
+    custom_combined_net_revenue DECIMAL(18,4) COMMENT 'Custom combined net revenue',
+    custom_combined_gross_profit DECIMAL(18,4) COMMENT 'Custom combined gross profit',
+    custom_expenses DECIMAL(18,4) COMMENT 'Custom expenses',
+    custom_orders_quantity INT COMMENT 'Custom orders quantity',
+    custom_total_items_quantity INT COMMENT 'Custom total items quantity',
+    custom_number VARCHAR(255) COMMENT 'Custom number',
+    custom_status VARCHAR(100) COMMENT 'Custom status',
+    custom_string VARCHAR(500) COMMENT 'Custom string',
+    orders_quantity INT COMMENT 'Orders quantity',
+    product_quantity_sold_in_order INT COMMENT 'Product quantity sold in order',
+    products_info TEXT COMMENT 'Products info (JSON)',
+    tags TEXT COMMENT 'Tags (JSON)',
+    financial_status VARCHAR(100) COMMENT 'Financial status',
+    fulfillment_status VARCHAR(100) COMMENT 'Fulfillment status',
+    cancelled_at DATETIME COMMENT 'Cancelled at',
+    created_at DATETIME COMMENT 'Created at',
+    channel VARCHAR(100) COMMENT 'Channel',
+    platform VARCHAR(100) COMMENT 'Platform',
+    source_name VARCHAR(255) COMMENT 'Source name',
+    integration_id VARCHAR(255) COMMENT 'Integration ID',
+    model VARCHAR(100) COMMENT 'Attribution model',
+    attribution_window VARCHAR(100) COMMENT 'Attribution window',
+    linear_weight DECIMAL(10,6) COMMENT 'Linear weight',
+    ad_id VARCHAR(255) COMMENT 'Ad ID',
+    ad_name VARCHAR(500) COMMENT 'Ad name',
+    adset_id VARCHAR(255) COMMENT 'Adset ID',
+    adset_name VARCHAR(500) COMMENT 'Adset name',
+    campaign_id VARCHAR(255) COMMENT 'Campaign ID',
+    campaign_name VARCHAR(500) COMMENT 'Campaign name',
+    campaign_type VARCHAR(100) COMMENT 'Campaign type',
+    click_date DATE COMMENT 'Click date',
+    click_ts BIGINT COMMENT 'Click timestamp',
+    session_id VARCHAR(255) COMMENT 'Session ID',
+    landing_page TEXT COMMENT 'Landing page URL',
+    utm_source VARCHAR(255) COMMENT 'UTM source',
+    utm_medium VARCHAR(255) COMMENT 'UTM medium',
+    browser VARCHAR(100) COMMENT 'Browser',
+    device VARCHAR(100) COMMENT 'Device',
+    billing_city VARCHAR(255) COMMENT 'Billing city',
+    billing_country VARCHAR(255) COMMENT 'Billing country',
+    billing_country_code VARCHAR(10) COMMENT 'Billing country code',
+    billing_province VARCHAR(255) COMMENT 'Billing province',
+    shipping_city VARCHAR(255) COMMENT 'Shipping city',
+    shipping_country VARCHAR(255) COMMENT 'Shipping country',
+    shipping_country_name VARCHAR(255) COMMENT 'Shipping country name',
+    shipping_country_code VARCHAR(10) COMMENT 'Shipping country code',
+    shipping_state VARCHAR(255) COMMENT 'Shipping state',
+    shipping_state_code VARCHAR(20) COMMENT 'Shipping state code',
+    shipping_zip VARCHAR(50) COMMENT 'Shipping zip',
+    customer_from_city VARCHAR(255) COMMENT 'Customer from city',
+    customer_from_country_name VARCHAR(255) COMMENT 'Customer from country name',
+    customer_from_country_code VARCHAR(10) COMMENT 'Customer from country code',
+    customer_from_state_code VARCHAR(20) COMMENT 'Customer from state code',
+    session_city VARCHAR(255) COMMENT 'Session city',
+    session_country VARCHAR(255) COMMENT 'Session country',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(order_id) DISTRIBUTED BY HASH(order_id) BUCKETS 10"""
+
+_TW_PIXEL_JOINED = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_pixel_joined (
+    event_date DATE COMMENT 'Event date',
+    channel VARCHAR(100) COMMENT 'Channel',
+    account_id VARCHAR(255) COMMENT 'Account ID',
+    campaign_id VARCHAR(255) COMMENT 'Campaign ID',
+    campaign_name VARCHAR(500) COMMENT 'Campaign name',
+    campaign_status VARCHAR(100) COMMENT 'Campaign status',
+    campaign_type VARCHAR(100) COMMENT 'Campaign type',
+    campaign_sub_type VARCHAR(100) COMMENT 'Campaign sub type',
+    campaign_bid_strategy VARCHAR(100) COMMENT 'Campaign bid strategy',
+    campaign_daily_budget DECIMAL(18,4) COMMENT 'Campaign daily budget',
+    campaign_lifetime_budget DECIMAL(18,4) COMMENT 'Campaign lifetime budget',
+    campaign_ai_recommendation VARCHAR(255) COMMENT 'Campaign AI recommendation',
+    campaign_ai_roas_pacing DECIMAL(10,4) COMMENT 'Campaign AI ROAS pacing',
+    adset_id VARCHAR(255) COMMENT 'Adset ID',
+    adset_name VARCHAR(500) COMMENT 'Adset name',
+    adset_status VARCHAR(100) COMMENT 'Adset status',
+    adset_bid_amount DECIMAL(18,4) COMMENT 'Adset bid amount',
+    adset_bid_strategy VARCHAR(100) COMMENT 'Adset bid strategy',
+    adset_daily_budget DECIMAL(18,4) COMMENT 'Adset daily budget',
+    adset_lifetime_budget DECIMAL(18,4) COMMENT 'Adset lifetime budget',
+    adset_ai_recommendation VARCHAR(255) COMMENT 'Adset AI recommendation',
+    adset_ai_roas_pacing DECIMAL(10,4) COMMENT 'Adset AI ROAS pacing',
+    ad_id VARCHAR(255) COMMENT 'Ad ID',
+    ad_name VARCHAR(500) COMMENT 'Ad name',
+    ad_status VARCHAR(100) COMMENT 'Ad status',
+    ad_type VARCHAR(100) COMMENT 'Ad type',
+    ad_copy TEXT COMMENT 'Ad copy',
+    ad_copies TEXT COMMENT 'Ad copies (JSON)',
+    ad_title VARCHAR(500) COMMENT 'Ad title',
+    ad_titles TEXT COMMENT 'Ad titles (JSON)',
+    ad_image_url TEXT COMMENT 'Ad image URL',
+    ad_ai_recommendation VARCHAR(255) COMMENT 'Ad AI recommendation',
+    ad_ai_roas_pacing DECIMAL(10,4) COMMENT 'Ad AI ROAS pacing',
+    ad_study_id VARCHAR(255) COMMENT 'Ad study ID',
+    ad_study_name VARCHAR(500) COMMENT 'Ad study name',
+    ad_study_cell_id VARCHAR(255) COMMENT 'Ad study cell ID',
+    ad_study_integration_id VARCHAR(255) COMMENT 'Ad study integration ID',
+    ad_study_objective_id VARCHAR(255) COMMENT 'Ad study objective ID',
+    ad_study_start_date DATE COMMENT 'Ad study start date',
+    ad_study_end_date DATE COMMENT 'Ad study end date',
+    creative_id VARCHAR(255) COMMENT 'Creative ID',
+    creative_format VARCHAR(100) COMMENT 'Creative format',
+    creative_distribution_format VARCHAR(100) COMMENT 'Creative distribution format',
+    creative_cta_type VARCHAR(100) COMMENT 'Creative CTA type',
+    asset_id VARCHAR(255) COMMENT 'Asset ID',
+    asset_type VARCHAR(100) COMMENT 'Asset type',
+    number_of_image_assets INT COMMENT 'Number of image assets',
+    number_of_video_assets INT COMMENT 'Number of video assets',
+    video_url TEXT COMMENT 'Video URL',
+    video_url_source TEXT COMMENT 'Video URL source',
+    video_url_iframe TEXT COMMENT 'Video URL iframe',
+    video_duration INT COMMENT 'Video duration (seconds)',
+    video_p25_watched BIGINT COMMENT 'Video 25% watched',
+    video_p50_watched BIGINT COMMENT 'Video 50% watched',
+    video_p75_watched BIGINT COMMENT 'Video 75% watched',
+    video_p100_watched BIGINT COMMENT 'Video 100% watched',
+    total_video_view BIGINT COMMENT 'Total video views',
+    integration_id VARCHAR(255) COMMENT 'Integration ID',
+    model VARCHAR(100) COMMENT 'Attribution model',
+    attribution_window VARCHAR(100) COMMENT 'Attribution window',
+    shop_id VARCHAR(100) COMMENT 'Shop ID',
+    shop_name VARCHAR(255) COMMENT 'Shop name',
+    provider_id VARCHAR(255) COMMENT 'Provider ID',
+    original_provider_id VARCHAR(255) COMMENT 'Original provider ID',
+    subscription_id VARCHAR(255) COMMENT 'Subscription ID',
+    channel_type VARCHAR(100) COMMENT 'Channel type',
+    is_utm_valid BOOLEAN COMMENT 'Is UTM valid',
+    destination_url TEXT COMMENT 'Destination URL',
+    url_template TEXT COMMENT 'URL template',
+    asin VARCHAR(255) COMMENT 'Amazon ASIN',
+    spend DECIMAL(18,4) COMMENT 'Spend',
+    non_tracked_spend DECIMAL(18,4) COMMENT 'Non-tracked spend',
+    spend_experiment DECIMAL(18,4) COMMENT 'Spend experiment',
+    suggested_budget DECIMAL(18,4) COMMENT 'Suggested budget',
+    impressions BIGINT COMMENT 'Impressions',
+    clicks BIGINT COMMENT 'Clicks',
+    outbound_clicks BIGINT COMMENT 'Outbound clicks',
+    sessions BIGINT COMMENT 'Sessions',
+    new_visitors BIGINT COMMENT 'New visitors',
+    unique_visitors BIGINT COMMENT 'Unique visitors',
+    session_page_views BIGINT COMMENT 'Session page views',
+    time_on_site DECIMAL(18,4) COMMENT 'Time on site',
+    bounces BIGINT COMMENT 'Bounces',
+    checkouts BIGINT COMMENT 'Checkouts',
+    add_to_carts BIGINT COMMENT 'Add to carts',
+    payments BIGINT COMMENT 'Payments',
+    orders_quantity BIGINT COMMENT 'Orders quantity',
+    order_revenue DECIMAL(18,4) COMMENT 'Order revenue',
+    gross_sales DECIMAL(18,4) COMMENT 'Gross sales',
+    gross_product_sales DECIMAL(18,4) COMMENT 'Gross product sales',
+    new_customer_orders BIGINT COMMENT 'New customer orders',
+    new_customer_order_revenue DECIMAL(18,4) COMMENT 'New customer order revenue',
+    new_customer_gross_sales DECIMAL(18,4) COMMENT 'New customer gross sales',
+    new_customer_cogs DECIMAL(18,4) COMMENT 'New customer COGS',
+    click_orders BIGINT COMMENT 'Click orders',
+    click_revenue DECIMAL(18,4) COMMENT 'Click revenue',
+    view_orders BIGINT COMMENT 'View orders',
+    view_revenue DECIMAL(18,4) COMMENT 'View revenue',
+    refund_money DECIMAL(18,4) COMMENT 'Refund money',
+    cogs DECIMAL(18,4) COMMENT 'Cost of goods sold',
+    cost_of_goods DECIMAL(18,4) COMMENT 'Cost of goods',
+    custom_gross_sales DECIMAL(18,4) COMMENT 'Custom gross sales',
+    custom_net_revenue DECIMAL(18,4) COMMENT 'Custom net revenue',
+    custom_gross_profit DECIMAL(18,4) COMMENT 'Custom gross profit',
+    custom_combined_gross_sales DECIMAL(18,4) COMMENT 'Custom combined gross sales',
+    custom_combined_net_revenue DECIMAL(18,4) COMMENT 'Custom combined net revenue',
+    custom_combined_gross_profit DECIMAL(18,4) COMMENT 'Custom combined gross profit',
+    custom_expenses DECIMAL(18,4) COMMENT 'Custom expenses',
+    custom_orders_quantity INT COMMENT 'Custom orders quantity',
+    custom_total_items_quantity INT COMMENT 'Custom total items quantity',
+    product_quantity_sold_in_order INT COMMENT 'Product quantity sold in order',
+    discount_codes TEXT COMMENT 'Discount codes (JSON)',
+    shipping DECIMAL(18,4) COMMENT 'Shipping',
+    i_revenue DECIMAL(18,4) COMMENT 'Incremental revenue',
+    i_roas DECIMAL(10,4) COMMENT 'Incremental ROAS',
+    incremental_revenue_experiment DECIMAL(18,4) COMMENT 'Incremental revenue experiment',
+    incremental_revenue_lower_bound_experiment DECIMAL(18,4) COMMENT 'Incremental revenue lower bound',
+    incremental_revenue_upper_bound_experiment DECIMAL(18,4) COMMENT 'Incremental revenue upper bound',
+    experiment_i_ROAS DECIMAL(10,4) COMMENT 'Experiment iROAS',
+    experiment_i_ROAS_lower_bound DECIMAL(10,4) COMMENT 'Experiment iROAS lower bound',
+    experiment_i_ROAS_upper_bound DECIMAL(10,4) COMMENT 'Experiment iROAS upper bound',
+    experiment_CPIC DECIMAL(18,4) COMMENT 'Experiment CPIC',
+    experiment_CPIC_lower DECIMAL(18,4) COMMENT 'Experiment CPIC lower',
+    experiment_CPIC_upper DECIMAL(18,4) COMMENT 'Experiment CPIC upper',
+    experiment_conversions_incremental DECIMAL(18,4) COMMENT 'Experiment conversions incremental',
+    experiment_conversions_incremental_lower DECIMAL(18,4) COMMENT 'Experiment conversions incremental lower',
+    experiment_conversions_incremental_upper DECIMAL(18,4) COMMENT 'Experiment conversions incremental upper',
+    experiment_conversions_incremental_share_percent DECIMAL(10,4) COMMENT 'Experiment conversions incremental share %',
+    experiment_revenue_incremental_share_percent DECIMAL(10,4) COMMENT 'Experiment revenue incremental share %',
+    experiment_incremental_conversions_confidence_percent DECIMAL(10,4) COMMENT 'Experiment incremental conversions confidence %',
+    experiment_incremental_revenue_confidence_percent DECIMAL(10,4) COMMENT 'Experiment incremental revenue confidence %',
+    experiment_event_date DATE COMMENT 'Experiment event date',
+    meta_conversion_value DECIMAL(18,4) COMMENT 'Meta conversion value',
+    meta_facebook_orders BIGINT COMMENT 'Meta Facebook orders',
+    non_meta_facebook_orders BIGINT COMMENT 'Non-Meta Facebook orders',
+    one_day_view_purchases BIGINT COMMENT 'One day view purchases',
+    one_day_view_conversion_value DECIMAL(18,4) COMMENT 'One day view conversion value',
+    seven_day_view_purchases BIGINT COMMENT 'Seven day view purchases',
+    seven_day_view_conversion_value DECIMAL(18,4) COMMENT 'Seven day view conversion value',
+    channel_reported_conversions BIGINT COMMENT 'Channel reported conversions',
+    channel_reported_conversion_value DECIMAL(18,4) COMMENT 'Channel reported conversion value',
+    channel_reported_all_conversions BIGINT COMMENT 'Channel reported all conversions',
+    channel_reported_onsite_purchases BIGINT COMMENT 'Channel reported onsite purchases',
+    channel_reported_onsite_conversion_value DECIMAL(18,4) COMMENT 'Channel reported onsite conversion value',
+    channel_reported_visits BIGINT COMMENT 'Channel reported visits',
+    channel_ai_recommendation VARCHAR(255) COMMENT 'Channel AI recommendation',
+    channel_ai_roas_pacing DECIMAL(10,4) COMMENT 'Channel AI ROAS pacing',
+    website_purchases BIGINT COMMENT 'Website purchases',
+    leads BIGINT COMMENT 'Leads',
+    mqls BIGINT COMMENT 'MQLs',
+    sqls BIGINT COMMENT 'SQLs',
+    opportunities BIGINT COMMENT 'Opportunities',
+    contacts BIGINT COMMENT 'Contacts',
+    book_demos BIGINT COMMENT 'Book demos',
+    email_signups BIGINT COMMENT 'Email signups',
+    addresses TEXT COMMENT 'Addresses (JSON)',
+    links TEXT COMMENT 'Links (JSON)',
+    sent BIGINT COMMENT 'Sent',
+    delivered BIGINT COMMENT 'Delivered',
+    opened BIGINT COMMENT 'Opened',
+    received BIGINT COMMENT 'Received',
+    recipients BIGINT COMMENT 'Recipients',
+    marked_as_spam BIGINT COMMENT 'Marked as spam',
+    unsubscribed BIGINT COMMENT 'Unsubscribed',
+    subscribed_to_list BIGINT COMMENT 'Subscribed to list',
+    message_subject VARCHAR(500) COMMENT 'Message subject',
+    message_template_html_url TEXT COMMENT 'Message template HTML URL',
+    subscription_id_signed BIGINT COMMENT 'Subscription ID signed',
+    subscription_id_cancelled BIGINT COMMENT 'Subscription ID cancelled',
+    subscription_id_canceled_only_first BIGINT COMMENT 'Subscription ID canceled only first',
+    subscription_quantity BIGINT COMMENT 'Subscription quantity',
+    subscriptions_arr DECIMAL(18,4) COMMENT 'Subscriptions ARR',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(event_date, channel, account_id, campaign_id, adset_id, ad_id)
+  DISTRIBUTED BY HASH(event_date) BUCKETS 10"""
+
+_TW_SESSIONS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_sessions (
+    session_id VARCHAR(255) COMMENT 'Session ID (unique key)',
+    event_date DATE COMMENT 'Event date',
+    event_date_timezone VARCHAR(100) COMMENT 'Event date timezone',
+    event_hour INT COMMENT 'Event hour',
+    shop_id VARCHAR(100) COMMENT 'Shop ID',
+    shop_name VARCHAR(255) COMMENT 'Shop name',
+    triple_id VARCHAR(255) COMMENT 'Triple Whale internal ID',
+    source VARCHAR(255) COMMENT 'Traffic source',
+    channel VARCHAR(100) COMMENT 'Channel',
+    utm_source VARCHAR(255) COMMENT 'UTM source',
+    utm_medium VARCHAR(255) COMMENT 'UTM medium',
+    ad_id VARCHAR(255) COMMENT 'Ad ID',
+    adset_id VARCHAR(255) COMMENT 'Adset ID',
+    campaign_id VARCHAR(255) COMMENT 'Campaign ID',
+    keyword_id VARCHAR(255) COMMENT 'Keyword ID',
+    landing_page TEXT COMMENT 'Landing page URL',
+    domain VARCHAR(255) COMMENT 'Domain',
+    browser VARCHAR(100) COMMENT 'Browser',
+    device VARCHAR(100) COMMENT 'Device',
+    device_model VARCHAR(255) COMMENT 'Device model',
+    city VARCHAR(255) COMMENT 'City',
+    country VARCHAR(255) COMMENT 'Country',
+    country_code VARCHAR(10) COMMENT 'Country code',
+    ms_country VARCHAR(255) COMMENT 'MS country',
+    ms_country_name VARCHAR(255) COMMENT 'MS country name',
+    is_new_visitor BOOLEAN COMMENT 'Is new visitor',
+    session_page_views INT COMMENT 'Session page views',
+    session_elapsed_time INT COMMENT 'Session elapsed time (seconds)',
+    session_start_ts BIGINT COMMENT 'Session start timestamp',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(session_id) DISTRIBUTED BY HASH(session_id) BUCKETS 10"""
+
+_TW_PRODUCT_ANALYTICS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_product_analytics (
+    event_date DATE COMMENT 'Event date',
+    entity VARCHAR(100) COMMENT 'Entity type (product/variant/collection)',
+    id VARCHAR(255) COMMENT 'Entity ID',
+    product_id VARCHAR(255) COMMENT 'Product ID',
+    variant_id VARCHAR(255) COMMENT 'Variant ID',
+    collection_id VARCHAR(255) COMMENT 'Collection ID',
+    shop_id VARCHAR(100) COMMENT 'Shop ID',
+    shop_name VARCHAR(255) COMMENT 'Shop name',
+    name VARCHAR(500) COMMENT 'Name',
+    title VARCHAR(500) COMMENT 'Title',
+    product_name VARCHAR(500) COMMENT 'Product name',
+    product_title VARCHAR(500) COMMENT 'Product title',
+    variant_name VARCHAR(500) COMMENT 'Variant name',
+    variant_title VARCHAR(500) COMMENT 'Variant title',
+    collection_name VARCHAR(500) COMMENT 'Collection name',
+    sku VARCHAR(255) COMMENT 'SKU',
+    vendor VARCHAR(255) COMMENT 'Vendor',
+    product_status VARCHAR(100) COMMENT 'Product status',
+    product_tags TEXT COMMENT 'Product tags (JSON)',
+    product_image_url TEXT COMMENT 'Product image URL',
+    images TEXT COMMENT 'Images (JSON)',
+    inventory_quantity INT COMMENT 'Inventory quantity',
+    number_of_ads INT COMMENT 'Number of ads',
+    impressions BIGINT COMMENT 'Impressions',
+    clicks BIGINT COMMENT 'Clicks',
+    visits BIGINT COMMENT 'Visits',
+    added_to_cart_events BIGINT COMMENT 'Added to cart events',
+    added_to_cart_items BIGINT COMMENT 'Added to cart items',
+    orders BIGINT COMMENT 'Orders',
+    customers BIGINT COMMENT 'Customers',
+    new_customer_orders BIGINT COMMENT 'New customer orders',
+    repeat_customer BIGINT COMMENT 'Repeat customer orders',
+    total_items_sold BIGINT COMMENT 'Total items sold',
+    new_customer_total_items_sold BIGINT COMMENT 'New customer total items sold',
+    revenue DECIMAL(18,4) COMMENT 'Revenue',
+    total_order_value DECIMAL(18,4) COMMENT 'Total order value',
+    new_customer_revenue DECIMAL(18,4) COMMENT 'New customer revenue',
+    new_customer_total_order_value DECIMAL(18,4) COMMENT 'New customer total order value',
+    spend DECIMAL(18,4) COMMENT 'Spend',
+    returns BIGINT COMMENT 'Returns',
+    fulfillment_costs DECIMAL(18,4) COMMENT 'Fulfillment costs',
+    new_customer_fulfillment_costs DECIMAL(18,4) COMMENT 'New customer fulfillment costs',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(event_date, entity, id) DISTRIBUTED BY HASH(event_date) BUCKETS 10"""
+
+_TW_PIXEL_KEYWORDS_JOINED = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_pixel_keywords_joined (
+    event_date DATE COMMENT 'Event date',
+    channel VARCHAR(100) COMMENT 'Channel',
+    account_id VARCHAR(255) COMMENT 'Account ID',
+    campaign_id VARCHAR(255) COMMENT 'Campaign ID',
+    campaign_name VARCHAR(500) COMMENT 'Campaign name',
+    campaign_status VARCHAR(100) COMMENT 'Campaign status',
+    campaign_bid_strategy VARCHAR(100) COMMENT 'Campaign bid strategy',
+    adset_id VARCHAR(255) COMMENT 'Adset ID',
+    adset_name VARCHAR(500) COMMENT 'Adset name',
+    adset_status VARCHAR(100) COMMENT 'Adset status',
+    adset_bid_amount DECIMAL(18,4) COMMENT 'Adset bid amount',
+    adset_bid_strategy VARCHAR(100) COMMENT 'Adset bid strategy',
+    keyword_id VARCHAR(255) COMMENT 'Keyword ID',
+    keyword_text VARCHAR(500) COMMENT 'Keyword text',
+    keyword_match_type VARCHAR(50) COMMENT 'Keyword match type',
+    keyword_status VARCHAR(100) COMMENT 'Keyword status',
+    keyword_system_serving_status VARCHAR(100) COMMENT 'Keyword system serving status',
+    keyword_quality_score INT COMMENT 'Keyword quality score',
+    keyword_cpc_bid DECIMAL(18,4) COMMENT 'Keyword CPC bid',
+    keyword_effective_cpc_bid DECIMAL(18,4) COMMENT 'Keyword effective CPC bid',
+    shop_id VARCHAR(100) COMMENT 'Shop ID',
+    shop_name VARCHAR(255) COMMENT 'Shop name',
+    integration_id VARCHAR(255) COMMENT 'Integration ID',
+    original_provider_id VARCHAR(255) COMMENT 'Original provider ID',
+    provider_id VARCHAR(255) COMMENT 'Provider ID',
+    model VARCHAR(100) COMMENT 'Attribution model',
+    attribution_window VARCHAR(100) COMMENT 'Attribution window',
+    channel_type VARCHAR(100) COMMENT 'Channel type',
+    impressions BIGINT COMMENT 'Impressions',
+    clicks BIGINT COMMENT 'Clicks',
+    sessions BIGINT COMMENT 'Sessions',
+    new_visitors BIGINT COMMENT 'New visitors',
+    unique_visitors BIGINT COMMENT 'Unique visitors',
+    session_page_views BIGINT COMMENT 'Session page views',
+    time_on_site DECIMAL(18,4) COMMENT 'Time on site',
+    bounces BIGINT COMMENT 'Bounces',
+    checkouts BIGINT COMMENT 'Checkouts',
+    add_to_carts BIGINT COMMENT 'Add to carts',
+    payments BIGINT COMMENT 'Payments',
+    orders_quantity BIGINT COMMENT 'Orders quantity',
+    order_revenue DECIMAL(18,4) COMMENT 'Order revenue',
+    gross_sales DECIMAL(18,4) COMMENT 'Gross sales',
+    gross_product_sales DECIMAL(18,4) COMMENT 'Gross product sales',
+    new_customer_orders BIGINT COMMENT 'New customer orders',
+    new_customer_order_revenue DECIMAL(18,4) COMMENT 'New customer order revenue',
+    new_customer_gross_sales DECIMAL(18,4) COMMENT 'New customer gross sales',
+    new_customer_cogs DECIMAL(18,4) COMMENT 'New customer COGS',
+    click_orders BIGINT COMMENT 'Click orders',
+    click_revenue DECIMAL(18,4) COMMENT 'Click revenue',
+    view_orders BIGINT COMMENT 'View orders',
+    view_revenue DECIMAL(18,4) COMMENT 'View revenue',
+    refund_money DECIMAL(18,4) COMMENT 'Refund money',
+    cogs DECIMAL(18,4) COMMENT 'Cost of goods sold',
+    cost_of_goods DECIMAL(18,4) COMMENT 'Cost of goods',
+    custom_gross_sales DECIMAL(18,4) COMMENT 'Custom gross sales',
+    custom_net_revenue DECIMAL(18,4) COMMENT 'Custom net revenue',
+    custom_gross_profit DECIMAL(18,4) COMMENT 'Custom gross profit',
+    custom_combined_gross_sales DECIMAL(18,4) COMMENT 'Custom combined gross sales',
+    custom_combined_net_revenue DECIMAL(18,4) COMMENT 'Custom combined net revenue',
+    custom_combined_gross_profit DECIMAL(18,4) COMMENT 'Custom combined gross profit',
+    custom_expenses DECIMAL(18,4) COMMENT 'Custom expenses',
+    custom_orders_quantity INT COMMENT 'Custom orders quantity',
+    custom_total_items_quantity INT COMMENT 'Custom total items quantity',
+    product_quantity_sold_in_order INT COMMENT 'Product quantity sold in order',
+    discount_codes TEXT COMMENT 'Discount codes (JSON)',
+    shipping DECIMAL(18,4) COMMENT 'Shipping',
+    spend DECIMAL(18,4) COMMENT 'Spend',
+    spend_experiment DECIMAL(18,4) COMMENT 'Spend experiment',
+    one_day_view_purchases BIGINT COMMENT 'One day view purchases',
+    one_day_view_conversion_value DECIMAL(18,4) COMMENT 'One day view conversion value',
+    seven_day_view_purchases BIGINT COMMENT 'Seven day view purchases',
+    seven_day_view_conversion_value DECIMAL(18,4) COMMENT 'Seven day view conversion value',
+    channel_reported_all_conversions BIGINT COMMENT 'Channel reported all conversions',
+    channel_reported_conversion_value DECIMAL(18,4) COMMENT 'Channel reported conversion value',
+    non_meta_facebook_orders BIGINT COMMENT 'Non-Meta Facebook orders',
+    experiment_i_ROAS DECIMAL(10,4) COMMENT 'Experiment iROAS',
+    experiment_i_ROAS_lower_bound DECIMAL(10,4) COMMENT 'Experiment iROAS lower bound',
+    experiment_i_ROAS_upper_bound DECIMAL(10,4) COMMENT 'Experiment iROAS upper bound',
+    experiment_CPIC DECIMAL(18,4) COMMENT 'Experiment CPIC',
+    experiment_CPIC_lower DECIMAL(18,4) COMMENT 'Experiment CPIC lower',
+    experiment_CPIC_upper DECIMAL(18,4) COMMENT 'Experiment CPIC upper',
+    experiment_conversions_incremental DECIMAL(18,4) COMMENT 'Experiment conversions incremental',
+    experiment_conversions_incremental_lower DECIMAL(18,4) COMMENT 'Experiment conversions incremental lower',
+    experiment_conversions_incremental_upper DECIMAL(18,4) COMMENT 'Experiment conversions incremental upper',
+    experiment_conversions_incremental_share_percent DECIMAL(10,4) COMMENT 'Experiment conversions incremental share %',
+    experiment_revenue_incremental_share_percent DECIMAL(10,4) COMMENT 'Experiment revenue incremental share %',
+    experiment_incremental_conversions_confidence_percent DECIMAL(10,4) COMMENT 'Experiment incremental conversions confidence %',
+    experiment_incremental_revenue_confidence_percent DECIMAL(10,4) COMMENT 'Experiment incremental revenue confidence %',
+    experiment_event_date DATE COMMENT 'Experiment event date',
+    incremental_revenue_experiment DECIMAL(18,4) COMMENT 'Incremental revenue experiment',
+    incremental_revenue_lower_bound_experiment DECIMAL(18,4) COMMENT 'Incremental revenue lower bound',
+    incremental_revenue_upper_bound_experiment DECIMAL(18,4) COMMENT 'Incremental revenue upper bound',
+    leads BIGINT COMMENT 'Leads',
+    mqls BIGINT COMMENT 'MQLs',
+    sqls BIGINT COMMENT 'SQLs',
+    opportunities BIGINT COMMENT 'Opportunities',
+    contacts BIGINT COMMENT 'Contacts',
+    book_demos BIGINT COMMENT 'Book demos',
+    email_signups BIGINT COMMENT 'Email signups',
+    addresses TEXT COMMENT 'Addresses (JSON)',
+    links TEXT COMMENT 'Links (JSON)',
+    sent BIGINT COMMENT 'Sent',
+    delivered BIGINT COMMENT 'Delivered',
+    opened BIGINT COMMENT 'Opened',
+    received BIGINT COMMENT 'Received',
+    recipients BIGINT COMMENT 'Recipients',
+    marked_as_spam BIGINT COMMENT 'Marked as spam',
+    unsubscribed BIGINT COMMENT 'Unsubscribed',
+    subscribed_to_list BIGINT COMMENT 'Subscribed to list',
+    message_subject VARCHAR(500) COMMENT 'Message subject',
+    message_template_html_url TEXT COMMENT 'Message template HTML URL',
+    subscription_id_signed BIGINT COMMENT 'Subscription ID signed',
+    subscription_id_cancelled BIGINT COMMENT 'Subscription ID cancelled',
+    subscription_id_canceled_only_first BIGINT COMMENT 'Subscription ID canceled only first',
+    subscription_quantity BIGINT COMMENT 'Subscription quantity',
+    subscriptions_arr DECIMAL(18,4) COMMENT 'Subscriptions ARR',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(event_date, channel, keyword_id) DISTRIBUTED BY HASH(event_date) BUCKETS 10"""
+
+_TW_ADS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_ads (
+    event_date DATE COMMENT 'Event date',
+    event_hour INT COMMENT 'Event hour',
+    channel VARCHAR(100) COMMENT 'Channel',
+    channel_type VARCHAR(100) COMMENT 'Channel type',
+    account_id VARCHAR(255) COMMENT 'Account ID',
+    campaign_id VARCHAR(255) COMMENT 'Campaign ID',
+    campaign_name VARCHAR(500) COMMENT 'Campaign name',
+    campaign_status VARCHAR(100) COMMENT 'Campaign status',
+    campaign_type VARCHAR(100) COMMENT 'Campaign type',
+    campaign_sub_type VARCHAR(100) COMMENT 'Campaign sub type',
+    campaign_bid_strategy VARCHAR(100) COMMENT 'Campaign bid strategy',
+    campaign_daily_budget DECIMAL(18,4) COMMENT 'Campaign daily budget',
+    campaign_lifetime_budget DECIMAL(18,4) COMMENT 'Campaign lifetime budget',
+    campaign_target_cpa DECIMAL(18,4) COMMENT 'Campaign target CPA',
+    campaign_target_roas DECIMAL(10,4) COMMENT 'Campaign target ROAS',
+    campaign_created_at DATETIME COMMENT 'Campaign created at',
+    campaign_ai_recommendation VARCHAR(255) COMMENT 'Campaign AI recommendation',
+    campaign_ai_roas_pacing DECIMAL(10,4) COMMENT 'Campaign AI ROAS pacing',
+    adset_id VARCHAR(255) COMMENT 'Adset ID',
+    adset_name VARCHAR(500) COMMENT 'Adset name',
+    adset_status VARCHAR(100) COMMENT 'Adset status',
+    adset_bid_amount DECIMAL(18,4) COMMENT 'Adset bid amount',
+    adset_bid_strategy VARCHAR(100) COMMENT 'Adset bid strategy',
+    adset_daily_budget DECIMAL(18,4) COMMENT 'Adset daily budget',
+    adset_lifetime_budget DECIMAL(18,4) COMMENT 'Adset lifetime budget',
+    adset_target_cpa DECIMAL(18,4) COMMENT 'Adset target CPA',
+    adset_target_roas DECIMAL(10,4) COMMENT 'Adset target ROAS',
+    adset_targeting TEXT COMMENT 'Adset targeting (JSON)',
+    adset_ai_recommendation VARCHAR(255) COMMENT 'Adset AI recommendation',
+    adset_ai_roas_pacing DECIMAL(10,4) COMMENT 'Adset AI ROAS pacing',
+    ad_id VARCHAR(255) COMMENT 'Ad ID',
+    ad_name VARCHAR(500) COMMENT 'Ad name',
+    ad_status VARCHAR(100) COMMENT 'Ad status',
+    ad_type VARCHAR(100) COMMENT 'Ad type',
+    ad_post_id VARCHAR(255) COMMENT 'Ad post ID',
+    ad_copy TEXT COMMENT 'Ad copy',
+    ad_copies TEXT COMMENT 'Ad copies (JSON)',
+    ad_title VARCHAR(500) COMMENT 'Ad title',
+    ad_titles TEXT COMMENT 'Ad titles (JSON)',
+    ad_image_url TEXT COMMENT 'Ad image URL',
+    ad_bid_amount DECIMAL(18,4) COMMENT 'Ad bid amount',
+    ad_ai_recommendation VARCHAR(255) COMMENT 'Ad AI recommendation',
+    ad_ai_roas_pacing DECIMAL(10,4) COMMENT 'Ad AI ROAS pacing',
+    creative_id VARCHAR(255) COMMENT 'Creative ID',
+    creative_format VARCHAR(100) COMMENT 'Creative format',
+    creative_distribution_format VARCHAR(100) COMMENT 'Creative distribution format',
+    creative_cta_type VARCHAR(100) COMMENT 'Creative CTA type',
+    asset_id VARCHAR(255) COMMENT 'Asset ID',
+    asset_type VARCHAR(100) COMMENT 'Asset type',
+    video_url TEXT COMMENT 'Video URL',
+    video_url_source TEXT COMMENT 'Video URL source',
+    video_url_iframe TEXT COMMENT 'Video URL iframe',
+    video_duration INT COMMENT 'Video duration (seconds)',
+    video_p25_watched BIGINT COMMENT 'Video 25% watched',
+    video_p50_watched BIGINT COMMENT 'Video 50% watched',
+    video_p75_watched BIGINT COMMENT 'Video 75% watched',
+    video_p95_watched BIGINT COMMENT 'Video 95% watched',
+    video_p100_watched BIGINT COMMENT 'Video 100% watched',
+    total_video_view BIGINT COMMENT 'Total video views',
+    three_second_video_view BIGINT COMMENT 'Three second video views',
+    thruplays BIGINT COMMENT 'Thruplays',
+    integration_id VARCHAR(255) COMMENT 'Integration ID',
+    shop_id VARCHAR(100) COMMENT 'Shop ID',
+    shop_name VARCHAR(255) COMMENT 'Shop name',
+    currency VARCHAR(20) COMMENT 'Currency',
+    currency_rate DECIMAL(18,6) COMMENT 'Currency rate',
+    destination_url TEXT COMMENT 'Destination URL',
+    url_template TEXT COMMENT 'URL template',
+    is_utm_valid BOOLEAN COMMENT 'Is UTM valid',
+    asin VARCHAR(255) COMMENT 'Amazon ASIN',
+    amazon_marketplace_id VARCHAR(255) COMMENT 'Amazon marketplace ID',
+    amazon_report_type VARCHAR(100) COMMENT 'Amazon report type',
+    breakdown_country_name VARCHAR(255) COMMENT 'Breakdown country name',
+    spend DECIMAL(18,4) COMMENT 'Spend',
+    non_tracked_spend DECIMAL(18,4) COMMENT 'Non-tracked spend',
+    suggested_budget DECIMAL(18,4) COMMENT 'Suggested budget',
+    impressions BIGINT COMMENT 'Impressions',
+    clicks BIGINT COMMENT 'Clicks',
+    outbound_clicks BIGINT COMMENT 'Outbound clicks',
+    reach BIGINT COMMENT 'Reach',
+    engagements BIGINT COMMENT 'Engagements',
+    inline_post_engagement BIGINT COMMENT 'Inline post engagement',
+    follows BIGINT COMMENT 'Follows',
+    visits BIGINT COMMENT 'Visits',
+    orders_quantity BIGINT COMMENT 'Orders quantity',
+    order_revenue DECIMAL(18,4) COMMENT 'Order revenue',
+    gross_product_sales DECIMAL(18,4) COMMENT 'Gross product sales',
+    new_customer_orders BIGINT COMMENT 'New customer orders',
+    new_customer_order_revenue DECIMAL(18,4) COMMENT 'New customer order revenue',
+    new_customer_cogs DECIMAL(18,4) COMMENT 'New customer COGS',
+    product_quantity_sold_in_order INT COMMENT 'Product quantity sold in order',
+    refund_money DECIMAL(18,4) COMMENT 'Refund money',
+    cogs DECIMAL(18,4) COMMENT 'Cost of goods sold',
+    i_revenue DECIMAL(18,4) COMMENT 'Incremental revenue',
+    i_roas DECIMAL(10,4) COMMENT 'Incremental ROAS',
+    meta_conversion_value DECIMAL(18,4) COMMENT 'Meta conversion value',
+    meta_purchases BIGINT COMMENT 'Meta purchases',
+    one_day_click_purchases BIGINT COMMENT 'One day click purchases',
+    one_day_click_conversion_value DECIMAL(18,4) COMMENT 'One day click conversion value',
+    one_day_click_likes BIGINT COMMENT 'One day click likes',
+    one_day_click_comments BIGINT COMMENT 'One day click comments',
+    one_day_click_reactions BIGINT COMMENT 'One day click reactions',
+    one_day_click_shares BIGINT COMMENT 'One day click shares',
+    one_day_click_link_clicks BIGINT COMMENT 'One day click link clicks',
+    one_day_view_purchases BIGINT COMMENT 'One day view purchases',
+    one_day_view_conversion_value DECIMAL(18,4) COMMENT 'One day view conversion value',
+    seven_day_click_purchases BIGINT COMMENT 'Seven day click purchases',
+    seven_day_click_conversion_value DECIMAL(18,4) COMMENT 'Seven day click conversion value',
+    seven_day_click_likes BIGINT COMMENT 'Seven day click likes',
+    seven_day_click_comments BIGINT COMMENT 'Seven day click comments',
+    seven_day_click_reactions BIGINT COMMENT 'Seven day click reactions',
+    seven_day_click_shares BIGINT COMMENT 'Seven day click shares',
+    seven_day_click_link_clicks BIGINT COMMENT 'Seven day click link clicks',
+    seven_day_view_purchases BIGINT COMMENT 'Seven day view purchases',
+    seven_day_view_conversion_value DECIMAL(18,4) COMMENT 'Seven day view conversion value',
+    twenty_eight_day_click_purchases BIGINT COMMENT 'Twenty eight day click purchases',
+    twenty_eight_day_click_conversion_value DECIMAL(18,4) COMMENT 'Twenty eight day click conversion value',
+    twenty_eight_day_click_link_clicks BIGINT COMMENT 'Twenty eight day click link clicks',
+    twenty_eight_day_view_purchases BIGINT COMMENT 'Twenty eight day view purchases',
+    twenty_eight_day_view_conversion_value DECIMAL(18,4) COMMENT 'Twenty eight day view conversion value',
+    onsite_purchases BIGINT COMMENT 'Onsite purchases',
+    onsite_conversion_value DECIMAL(18,4) COMMENT 'Onsite conversion value',
+    onsite_one_day_click_purchases BIGINT COMMENT 'Onsite one day click purchases',
+    onsite_one_day_click_conversion_value DECIMAL(18,4) COMMENT 'Onsite one day click conversion value',
+    onsite_one_day_view_purchases BIGINT COMMENT 'Onsite one day view purchases',
+    onsite_one_day_view_conversion_value DECIMAL(18,4) COMMENT 'Onsite one day view conversion value',
+    onsite_seven_day_click_purchases BIGINT COMMENT 'Onsite seven day click purchases',
+    onsite_seven_day_click_conversion_value DECIMAL(18,4) COMMENT 'Onsite seven day click conversion value',
+    onsite_seven_day_view_purchases BIGINT COMMENT 'Onsite seven day view purchases',
+    onsite_seven_day_view_conversion_value DECIMAL(18,4) COMMENT 'Onsite seven day view conversion value',
+    onsite_twenty_eight_day_click_purchases BIGINT COMMENT 'Onsite twenty eight day click purchases',
+    onsite_twenty_eight_day_click_conversion_value DECIMAL(18,4) COMMENT 'Onsite twenty eight day click conversion value',
+    onsite_twenty_eight_day_view_purchases BIGINT COMMENT 'Onsite twenty eight day view purchases',
+    onsite_twenty_eight_day_view_conversion_value DECIMAL(18,4) COMMENT 'Onsite twenty eight day view conversion value',
+    on_web_order BIGINT COMMENT 'On web order',
+    total_on_web_order_value DECIMAL(18,4) COMMENT 'Total on web order value',
+    total_complete_payment_rate DECIMAL(10,4) COMMENT 'Total complete payment rate',
+    complete_payment BIGINT COMMENT 'Complete payment',
+    conversion_value DECIMAL(18,4) COMMENT 'Conversion value',
+    conversions BIGINT COMMENT 'Conversions',
+    all_conversions BIGINT COMMENT 'All conversions',
+    all_conversion_value DECIMAL(18,4) COMMENT 'All conversion value',
+    channel_ai_recommendation VARCHAR(255) COMMENT 'Channel AI recommendation',
+    channel_ai_roas_pacing DECIMAL(10,4) COMMENT 'Channel AI ROAS pacing',
+    search_impressions BIGINT COMMENT 'Search impressions',
+    search_impression_share DECIMAL(10,4) COMMENT 'Search impression share',
+    search_absolute_top_impressions BIGINT COMMENT 'Search absolute top impressions',
+    search_absolute_top_impression_share DECIMAL(10,4) COMMENT 'Search absolute top impression share',
+    search_top_impressions BIGINT COMMENT 'Search top impressions',
+    search_top_impression_share DECIMAL(10,4) COMMENT 'Search top impression share',
+    search_budget_lost_absolute_top_impressions BIGINT COMMENT 'Search budget lost absolute top impressions',
+    search_budget_lost_absolute_top_impression_share DECIMAL(10,4) COMMENT 'Search budget lost absolute top impression share',
+    search_budget_lost_top_impressions BIGINT COMMENT 'Search budget lost top impressions',
+    search_budget_lost_top_impression_share DECIMAL(10,4) COMMENT 'Search budget lost top impression share',
+    search_rank_lost_impressions BIGINT COMMENT 'Search rank lost impressions',
+    search_rank_lost_impression_share DECIMAL(10,4) COMMENT 'Search rank lost impression share',
+    search_rank_lost_top_impressions BIGINT COMMENT 'Search rank lost top impressions',
+    search_rank_lost_top_impression_share DECIMAL(10,4) COMMENT 'Search rank lost top impression share',
+    actions TEXT COMMENT 'Actions (JSON)',
+    weight DECIMAL(10,6) COMMENT 'Weight',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(event_date, channel, account_id, campaign_id, adset_id, ad_id)
+  DISTRIBUTED BY HASH(event_date) BUCKETS 10"""
+
+_TW_SOCIAL_MEDIA_COMMENTS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_social_media_comments (
+    comment_id VARCHAR(255) COMMENT 'Comment ID (unique key)',
+    post_id VARCHAR(255) COMMENT 'Post ID',
+    page_id VARCHAR(255) COMMENT 'Page ID',
+    user_id VARCHAR(255) COMMENT 'User ID',
+    account_id VARCHAR(255) COMMENT 'Account ID',
+    integration_id VARCHAR(255) COMMENT 'Integration ID',
+    channel VARCHAR(100) COMMENT 'Channel',
+    comment_text TEXT COMMENT 'Comment text',
+    sentiment VARCHAR(50) COMMENT 'Sentiment',
+    topic VARCHAR(255) COMMENT 'Topic',
+    risk VARCHAR(50) COMMENT 'Risk level',
+    visibility_status VARCHAR(100) COMMENT 'Visibility status',
+    visibility_changed_at DATETIME COMMENT 'Visibility changed at',
+    visibility_changed_by VARCHAR(255) COMMENT 'Visibility changed by',
+    created_at DATETIME COMMENT 'Created at',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(comment_id) DISTRIBUTED BY HASH(comment_id) BUCKETS 10"""
+
+_TW_SOCIAL_MEDIA_PAGES = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_social_media_pages (
+    event_date DATE COMMENT 'Event date',
+    page_id VARCHAR(255) COMMENT 'Page ID',
+    channel VARCHAR(100) COMMENT 'Channel',
+    page_name VARCHAR(255) COMMENT 'Page name',
+    page_permalink TEXT COMMENT 'Page permalink',
+    about TEXT COMMENT 'About',
+    category VARCHAR(255) COMMENT 'Category',
+    cover_url TEXT COMMENT 'Cover URL',
+    image_url TEXT COMMENT 'Image URL',
+    website TEXT COMMENT 'Website',
+    impressions BIGINT COMMENT 'Impressions',
+    impressions_paid BIGINT COMMENT 'Paid impressions',
+    impressions_unique BIGINT COMMENT 'Unique impressions',
+    impressions_viral BIGINT COMMENT 'Viral impressions',
+    views_total BIGINT COMMENT 'Total views',
+    video_views BIGINT COMMENT 'Video views',
+    fan_adds BIGINT COMMENT 'Fan adds',
+    fan_removes BIGINT COMMENT 'Fan removes',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(event_date, page_id, channel) DISTRIBUTED BY HASH(event_date) BUCKETS 10"""
+
+_TW_CREATIVES = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_creatives (
+    event_date DATE COMMENT 'Event date',
+    channel VARCHAR(100) COMMENT 'Channel',
+    ad_id VARCHAR(255) COMMENT 'Ad ID',
+    creative_id VARCHAR(255) COMMENT 'Creative ID',
+    asset_id VARCHAR(255) COMMENT 'Asset ID',
+    asset_type VARCHAR(100) COMMENT 'Asset type',
+    creative_format VARCHAR(100) COMMENT 'Creative format',
+    creative_distribution_format VARCHAR(100) COMMENT 'Creative distribution format',
+    creative_cta_type VARCHAR(100) COMMENT 'Creative CTA type',
+    ad_copy TEXT COMMENT 'Ad copy',
+    ad_copies TEXT COMMENT 'Ad copies (JSON)',
+    ad_title VARCHAR(500) COMMENT 'Ad title',
+    ad_titles TEXT COMMENT 'Ad titles (JSON)',
+    ad_type VARCHAR(100) COMMENT 'Ad type',
+    ad_image_url TEXT COMMENT 'Ad image URL',
+    video_url TEXT COMMENT 'Video URL',
+    video_url_source TEXT COMMENT 'Video URL source',
+    video_url_iframe TEXT COMMENT 'Video URL iframe',
+    video_duration INT COMMENT 'Video duration (seconds)',
+    video_p25_watched BIGINT COMMENT 'Video 25% watched',
+    video_p50_watched BIGINT COMMENT 'Video 50% watched',
+    video_p75_watched BIGINT COMMENT 'Video 75% watched',
+    video_p95_watched BIGINT COMMENT 'Video 95% watched',
+    video_p100_watched BIGINT COMMENT 'Video 100% watched',
+    total_video_view BIGINT COMMENT 'Total video views',
+    three_second_video_view BIGINT COMMENT 'Three second video views',
+    thruplays BIGINT COMMENT 'Thruplays',
+    number_of_ads INT COMMENT 'Number of ads',
+    destination_url TEXT COMMENT 'Destination URL',
+    url_template TEXT COMMENT 'URL template',
+    shop_id VARCHAR(100) COMMENT 'Shop ID',
+    shop_name VARCHAR(255) COMMENT 'Shop name',
+    model VARCHAR(100) COMMENT 'Attribution model',
+    attribution_window VARCHAR(100) COMMENT 'Attribution window',
+    spend DECIMAL(18,4) COMMENT 'Spend',
+    non_tracked_spend DECIMAL(18,4) COMMENT 'Non-tracked spend',
+    impressions BIGINT COMMENT 'Impressions',
+    clicks BIGINT COMMENT 'Clicks',
+    outbound_clicks BIGINT COMMENT 'Outbound clicks',
+    orders_quantity BIGINT COMMENT 'Orders quantity',
+    order_revenue DECIMAL(18,4) COMMENT 'Order revenue',
+    gross_product_sales DECIMAL(18,4) COMMENT 'Gross product sales',
+    new_customer_orders BIGINT COMMENT 'New customer orders',
+    new_customer_order_revenue DECIMAL(18,4) COMMENT 'New customer order revenue',
+    new_customer_cogs DECIMAL(18,4) COMMENT 'New customer COGS',
+    cogs DECIMAL(18,4) COMMENT 'Cost of goods sold',
+    website_purchases BIGINT COMMENT 'Website purchases',
+    meta_conversion_value DECIMAL(18,4) COMMENT 'Meta conversion value',
+    meta_facebook_orders BIGINT COMMENT 'Meta Facebook orders',
+    non_meta_facebook_orders BIGINT COMMENT 'Non-Meta Facebook orders',
+    one_day_view_purchases BIGINT COMMENT 'One day view purchases',
+    one_day_view_conversion_value DECIMAL(18,4) COMMENT 'One day view conversion value',
+    seven_day_view_purchases BIGINT COMMENT 'Seven day view purchases',
+    seven_day_view_conversion_value DECIMAL(18,4) COMMENT 'Seven day view conversion value',
+    channel_reported_conversions BIGINT COMMENT 'Channel reported conversions',
+    channel_reported_conversion_value DECIMAL(18,4) COMMENT 'Channel reported conversion value',
+    channel_reported_onsite_purchases BIGINT COMMENT 'Channel reported onsite purchases',
+    channel_reported_onsite_conversion_value DECIMAL(18,4) COMMENT 'Channel reported onsite conversion value',
+    channel_reported_visits BIGINT COMMENT 'Channel reported visits',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(event_date, channel, ad_id, asset_id) DISTRIBUTED BY HASH(event_date) BUCKETS 10"""
+
+_TW_AI_VISIBILITY = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_ai_visibility (
+    event_date DATE COMMENT 'Event date',
+    data TEXT COMMENT 'AI visibility raw data (JSON)',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(event_date) DISTRIBUTED BY HASH(event_date) BUCKETS 10"""
+
+# ---------------------------------------------------------------------------
+# TikTok ODS 表
+# ---------------------------------------------------------------------------
+
+_TIKTOK_RETURN_REFUND = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_return_refund (
+    return_id VARCHAR(255) COMMENT 'Return ID (unique key)',
+    combined_return_id VARCHAR(255) COMMENT 'Combined return ID',
+    order_id VARCHAR(255) COMMENT 'Order ID',
+    create_time BIGINT COMMENT 'Create time (unix timestamp)',
+    update_time BIGINT COMMENT 'Update time (unix timestamp)',
+    return_type VARCHAR(50) COMMENT 'Return type',
+    return_status VARCHAR(100) COMMENT 'Return status',
+    return_method VARCHAR(100) COMMENT 'Return method',
+    return_reason VARCHAR(500) COMMENT 'Return reason',
+    return_reason_text TEXT COMMENT 'Return reason text',
+    return_shipping_document_type VARCHAR(100) COMMENT 'Return shipping document type',
+    return_tracking_number VARCHAR(255) COMMENT 'Return tracking number',
+    return_provider_id VARCHAR(255) COMMENT 'Return provider ID',
+    return_provider_name VARCHAR(255) COMMENT 'Return provider name',
+    return_warehouse_address TEXT COMMENT 'Return warehouse address (JSON)',
+    shipment_type VARCHAR(100) COMMENT 'Shipment type',
+    handover_method VARCHAR(100) COMMENT 'Handover method',
+    is_combined_return BOOLEAN COMMENT 'Is combined return',
+    is_quick_refund BOOLEAN COMMENT 'Is quick refund',
+    role VARCHAR(100) COMMENT 'Role',
+    refund_amount_currency VARCHAR(20) COMMENT 'Refund amount currency',
+    refund_amount_refund_subtotal DECIMAL(18,4) COMMENT 'Refund subtotal',
+    refund_amount_refund_shipping_fee DECIMAL(18,4) COMMENT 'Refund shipping fee',
+    refund_amount_refund_tax DECIMAL(18,4) COMMENT 'Refund tax',
+    refund_amount_refund_total DECIMAL(18,4) COMMENT 'Refund total',
+    shipping_fee_amount TEXT COMMENT 'Shipping fee amount breakdown (JSON)',
+    discount_amount TEXT COMMENT 'Discount amount breakdown (JSON)',
+    return_line_items TEXT COMMENT 'Return line items (JSON)',
+    seller_next_action_response TEXT COMMENT 'Seller next action response (JSON)',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(return_id) DISTRIBUTED BY HASH(return_id) BUCKETS 10"""
+
+_TIKTOK_VIDEO_PERFORMANCES = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_video_performances (
+    video_id VARCHAR(255) COMMENT 'Video ID',
+    collect_date DATE COMMENT 'Data collection date (end_date - 1)',
+    title VARCHAR(500) COMMENT 'Video title',
+    username VARCHAR(255) COMMENT 'Creator username',
+    video_post_time BIGINT COMMENT 'Video post time (unix timestamp)',
+    duration INT COMMENT 'Video duration (seconds)',
+    views BIGINT COMMENT 'Total views',
+    items_sold BIGINT COMMENT 'Items sold',
+    sku_orders BIGINT COMMENT 'SKU orders',
+    avg_customers DECIMAL(10,4) COMMENT 'Average customers',
+    click_through_rate DECIMAL(10,4) COMMENT 'Click through rate',
+    gmv_amount DECIMAL(18,4) COMMENT 'GMV amount',
+    gmv_currency VARCHAR(20) COMMENT 'GMV currency',
+    gpm_amount DECIMAL(18,4) COMMENT 'GPM amount',
+    gpm_currency VARCHAR(20) COMMENT 'GPM currency',
+    hash_tags TEXT COMMENT 'Hash tags (JSON)',
+    products TEXT COMMENT 'Products (JSON)',
+    latest_available_date VARCHAR(50) COMMENT 'Latest available date',
+    next_page_token VARCHAR(500) COMMENT 'Next page token',
+    total_count INT COMMENT 'Total count',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(video_id, collect_date) DISTRIBUTED BY HASH(video_id) BUCKETS 10"""
+
+_TIKTOK_SHOP_PRODUCT_PERFORMANCE = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_shop_product_performance (
+    product_id VARCHAR(255) COMMENT 'Product ID',
+    collect_date DATE COMMENT 'Data collection date (end_date - 1)',
+    start_date VARCHAR(20) COMMENT 'Interval start date',
+    end_date VARCHAR(20) COMMENT 'Interval end date',
+    sales_gmv_amount DECIMAL(18,4) COMMENT 'Sales GMV amount',
+    sales_gmv_currency VARCHAR(20) COMMENT 'Sales GMV currency',
+    sales_items_sold BIGINT COMMENT 'Sales items sold',
+    sales_orders BIGINT COMMENT 'Sales orders',
+    sales_avg_customers DECIMAL(10,4) COMMENT 'Sales average customers',
+    sales_breakdowns TEXT COMMENT 'Sales breakdowns by content type (JSON)',
+    traffic_avg_conversion_rate DECIMAL(10,4) COMMENT 'Traffic average conversion rate',
+    traffic_avg_unique_page_views DECIMAL(10,4) COMMENT 'Traffic average unique page views',
+    traffic_ctr DECIMAL(10,4) COMMENT 'Traffic CTR',
+    traffic_impressions BIGINT COMMENT 'Traffic impressions',
+    traffic_page_views BIGINT COMMENT 'Traffic page views',
+    traffic_breakdowns TEXT COMMENT 'Traffic breakdowns by content type (JSON)',
+    ratings TEXT COMMENT 'Ratings distribution (JSON)',
+    top_contents TEXT COMMENT 'Top contents (JSON)',
+    top_creators TEXT COMMENT 'Top creators (JSON)',
+    latest_available_date VARCHAR(50) COMMENT 'Latest available date',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(product_id, collect_date) DISTRIBUTED BY HASH(product_id) BUCKETS 10"""
+
+_TIKTOK_SHOP_VIDEO_PERFORMANCE_DETAIL = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_shop_video_performance_detail (
+    video_id VARCHAR(255) COMMENT 'Video ID',
+    collect_date DATE COMMENT 'Data collection date (end_date - 1)',
+    start_date VARCHAR(20) COMMENT 'Interval start date',
+    end_date VARCHAR(20) COMMENT 'Interval end date',
+    traffic_views BIGINT COMMENT 'Traffic views',
+    traffic_likes BIGINT COMMENT 'Traffic likes',
+    traffic_comments BIGINT COMMENT 'Traffic comments',
+    traffic_shares BIGINT COMMENT 'Traffic shares',
+    traffic_new_followers BIGINT COMMENT 'Traffic new followers',
+    sales_overall_customers BIGINT COMMENT 'Sales overall customers',
+    sales_overall_items_sold BIGINT COMMENT 'Sales overall items sold',
+    sales_overall_gmv_amount DECIMAL(18,4) COMMENT 'Sales overall GMV amount',
+    sales_overall_gmv_currency VARCHAR(20) COMMENT 'Sales overall GMV currency',
+    sales_overall_gpm_amount DECIMAL(18,4) COMMENT 'Sales overall GPM amount',
+    sales_overall_gpm_currency VARCHAR(20) COMMENT 'Sales overall GPM currency',
+    sales_overall_ctr DECIMAL(10,4) COMMENT 'Sales overall CTR',
+    sales_overall_product_clicks BIGINT COMMENT 'Sales overall product clicks',
+    sales_overall_product_impressions BIGINT COMMENT 'Sales overall product impressions',
+    sales_breakdowns TEXT COMMENT 'Sales breakdowns by product (JSON)',
+    viewer_profile TEXT COMMENT 'Viewer profile (JSON)',
+    latest_available_date VARCHAR(50) COMMENT 'Latest available date',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(video_id, collect_date) DISTRIBUTED BY HASH(video_id) BUCKETS 10"""
+
+# ---------------------------------------------------------------------------
+# 钉钉 ODS 表（中文字段 → 英文 snake_case，COMMENT 写原中文）
+# ---------------------------------------------------------------------------
+
+_DINGTALK_KOL_INFO = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_kol_tidwe_kol_info (
+    record_id VARCHAR(255) COMMENT '钉钉行ID (unique key)',
+    kol_id VARCHAR(255) COMMENT '*红人ID',
+    full_name VARCHAR(500) COMMENT '*全名',
+    follower_count VARCHAR(100) COMMENT '*粉丝数（k）',
+    kol_level VARCHAR(100) COMMENT '红人等级',
+    kol_type VARCHAR(100) COMMENT '红人类型',
+    cooperation_mode VARCHAR(255) COMMENT '*合作模式',
+    payment_mode VARCHAR(255) COMMENT '*付费模式',
+    commission_rate VARCHAR(100) COMMENT '*佣金率',
+    price_and_delivery TEXT COMMENT '*合作价格及交付项（格式：合作周期-价格-交付内容）',
+    sample_address TEXT COMMENT '*寄样地址',
+    homepage_url TEXT COMMENT '*主页链接',
+    email VARCHAR(500) COMMENT '*Email',
+    other_contact VARCHAR(500) COMMENT '其他联系方式',
+    payment_info TEXT COMMENT '*收款信息',
+    promo_code VARCHAR(255) COMMENT '*Code',
+    state VARCHAR(255) COMMENT '*所在州',
+    follow_up_person VARCHAR(255) COMMENT '*跟进人',
+    cooperation_review TEXT COMMENT '合作review',
+    q4_2025_gmv VARCHAR(100) COMMENT '2025Q4 GMV',
+    q4_2025_views VARCHAR(100) COMMENT '2025Q4播放',
+    long_video_avg_views VARCHAR(100) COMMENT '长视频均播（k）',
+    next_action TEXT COMMENT '后续动作',
+    notes TEXT COMMENT '备注',
+    original_utm VARCHAR(500) COMMENT '原UTM',
+    collected_at DATETIME COMMENT '采集时间',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10"""
+
+_DINGTALK_KOL_SAMPLE = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_kol_tidwe_sample (
+    record_id VARCHAR(255) COMMENT '钉钉行ID (unique key)',
+    kol_id VARCHAR(255) COMMENT '*红人ID',
+    product VARCHAR(500) COMMENT '*产品',
+    sample_date VARCHAR(100) COMMENT '*寄样时间',
+    tracking_number VARCHAR(255) COMMENT '*单号',
+    sample_purpose VARCHAR(500) COMMENT '寄样目的',
+    collected_at DATETIME COMMENT '采集时间',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10"""
+
+_DINGTALK_KOL_CONTENT = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_kol_tidwe_content (
+    record_id VARCHAR(255) COMMENT '钉钉行ID (unique key)',
+    kol_id VARCHAR(255) COMMENT '*红人ID',
+    publish_platform VARCHAR(255) COMMENT '*发布平台',
+    actual_publish_date VARCHAR(100) COMMENT '*实际发布日期',
+    expected_publish_date VARCHAR(100) COMMENT '*预期发布日期',
+    content_url TEXT COMMENT '*内容发布链接',
+    content_type VARCHAR(255) COMMENT '*内容类型',
+    cooperation_price TEXT COMMENT '*合作价格（日期：价格/交付内容）',
+    promoted_product TEXT COMMENT '*推广产品',
+    promo_code VARCHAR(255) COMMENT '*CODE',
+    cooperation_mode VARCHAR(255) COMMENT '合作模式',
+    cooperation_purpose VARCHAR(500) COMMENT '合作目的',
+    contract VARCHAR(255) COMMENT '*合同',
+    w9 VARCHAR(255) COMMENT 'W9',
+    views VARCHAR(100) COMMENT '播放数',
+    notes TEXT COMMENT '备注',
+    collected_at DATETIME COMMENT '采集时间',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10"""
+
+_DINGTALK_RAW_MATERIAL = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_outdoor_raw_material (
+    record_id VARCHAR(255) COMMENT '钉钉行ID (unique key)',
+    date VARCHAR(100) COMMENT '⏱️date',
+    script TEXT COMMENT '拍摄脚本（要求全英文）',
+    requester VARCHAR(255) COMMENT '需求人',
+    material_type VARCHAR(255) COMMENT '素材类型',
+    product_sku VARCHAR(500) COMMENT '产品SKU',
+    product_spu VARCHAR(500) COMMENT '产品SPU',
+    material_quantity VARCHAR(100) COMMENT '素材数量',
+    producer VARCHAR(255) COMMENT '制作人/KOL对接人',
+    shooting_kol VARCHAR(255) COMMENT '拍摄KOL',
+    actual_completion_date VARCHAR(100) COMMENT '实际完成时间',
+    material_path TEXT COMMENT '返回素材挂载盘路径',
+    cooperation_price VARCHAR(500) COMMENT '合作价格',
+    brand VARCHAR(255) COMMENT '品牌',
+    material_progress VARCHAR(255) COMMENT '素材进度',
+    social_media_person VARCHAR(255) COMMENT '社媒/内容负责人',
+    kol_video_url TEXT COMMENT 'KOL上线视频链接',
+    multi_channel_use VARCHAR(255) COMMENT '多渠道使用',
+    actual_shipping_sku VARCHAR(500) COMMENT '实际发货sku',
+    actual_shipping_date VARCHAR(100) COMMENT '实际发货时间',
+    need_lock_warehouse VARCHAR(50) COMMENT '是否需要锁仓',
+    need_sample VARCHAR(50) COMMENT '是否发样品',
+    tiktok_code VARCHAR(255) COMMENT 'Tiktok code',
+    expected_return_date VARCHAR(100) COMMENT '预期返回时间',
+    tts_script_ref TEXT COMMENT 'TTS爆款脚本参考',
+    is_collab_video VARCHAR(50) COMMENT '是否合创视频',
+    lock_notes TEXT COMMENT '锁仓备注',
+    unlock_notes TEXT COMMENT '解仓备注',
+    kol_notes TEXT COMMENT 'KOL备注',
+    last_updated_at VARCHAR(100) COMMENT '最后更新时间',
+    created_at VARCHAR(100) COMMENT '创建时间',
+    updated_by VARCHAR(255) COMMENT '更新人',
+    created_by VARCHAR(255) COMMENT '创建人',
+    collected_at DATETIME COMMENT '采集时间',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10"""
+
+_DINGTALK_SHOOT_KOL = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_outdoor_shoot_kol (
+    record_id VARCHAR(255) COMMENT '钉钉行ID (unique key)',
+    shoot_kol VARCHAR(255) COMMENT '拍摄KOL',
+    cooperation_phase VARCHAR(255) COMMENT 'Cooperation Phase-合作状态',
+    email VARCHAR(500) COMMENT '*Email',
+    size VARCHAR(100) COMMENT 'Size',
+    gender VARCHAR(50) COMMENT 'Gender',
+    contract_date VARCHAR(100) COMMENT 'Contract Date-签合同时间',
+    price_note TEXT COMMENT 'Price Note',
+    good_at_type TEXT COMMENT '擅长类型',
+    good_at_content TEXT COMMENT '擅长内容',
+    cooperation_quality VARCHAR(100) COMMENT '配合度',
+    content_quality VARCHAR(100) COMMENT '内容质量',
+    ad_effect VARCHAR(100) COMMENT '内容投放效果',
+    promo_code VARCHAR(255) COMMENT 'Promo Code',
+    channel VARCHAR(255) COMMENT 'Channel',
+    followers VARCHAR(100) COMMENT 'Followers',
+    sample_address TEXT COMMENT '*寄样地址',
+    brand VARCHAR(255) COMMENT 'Brand',
+    feature_note TEXT COMMENT 'Feature Note-备注',
+    real_name VARCHAR(255) COMMENT 'Real Name',
+    cooperation_form VARCHAR(255) COMMENT 'Cooperation-合作形式',
+    w9_contract VARCHAR(255) COMMENT 'W9和Contract-合同',
+    country VARCHAR(255) COMMENT '国家',
+    ethnicity VARCHAR(100) COMMENT '民族',
+    whatsapp VARCHAR(255) COMMENT 'Whatsapp',
+    phone VARCHAR(255) COMMENT 'Phone',
+    kol_level VARCHAR(100) COMMENT '红人等级',
+    cooperation_mode VARCHAR(255) COMMENT '合作模式',
+    payment_mode VARCHAR(255) COMMENT '付费模式',
+    tiktok_url TEXT COMMENT 'TK主页链接',
+    fb_ig_url TEXT COMMENT 'FB/IG主页链接',
+    youtube_url TEXT COMMENT 'YTB主页链接',
+    contact_person VARCHAR(255) COMMENT '🤵对接人',
+    brand_required VARCHAR(255) COMMENT '品牌',
+    is_tiktok_partner VARCHAR(50) COMMENT '是否是TK已合作达人',
+    shoot_return_timeliness VARCHAR(100) COMMENT '拍摄返图时效',
+    created_at VARCHAR(100) COMMENT '创建时间',
+    updated_by VARCHAR(255) COMMENT '更新人',
+    last_updated_at VARCHAR(100) COMMENT '最后更新时间',
+    collected_at DATETIME COMMENT '采集时间',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10"""
+
+_DINGTALK_VIDEO_DELIVERY = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_video_delivery (
+    record_id VARCHAR(255) COMMENT '钉钉行ID (unique key)',
+    completion_date VARCHAR(100) COMMENT '成片日期',
+    product_spu VARCHAR(500) COMMENT '产品SPU',
+    video_title VARCHAR(500) COMMENT '视频标题',
+    video_path TEXT COMMENT '视频Y盘路径',
+    tt_ad_account VARCHAR(255) COMMENT 'TT投放账号',
+    product_category VARCHAR(255) COMMENT '产品大类',
+    publish_url TEXT COMMENT '发布链接',
+    director VARCHAR(255) COMMENT '编导',
+    editor VARCHAR(255) COMMENT '剪辑',
+    content_category VARCHAR(255) COMMENT '内容大类',
+    dubbing VARCHAR(255) COMMENT '配音',
+    brand VARCHAR(255) COMMENT '品牌',
+    target_platform VARCHAR(255) COMMENT '针对平台',
+    is_published_tt VARCHAR(50) COMMENT '是否发布TT',
+    is_sent_to_group VARCHAR(50) COMMENT '是否发群',
+    publish_date VARCHAR(100) COMMENT '发布日期',
+    special_project VARCHAR(255) COMMENT '特殊项目',
+    notes TEXT COMMENT '备注',
+    collected_at DATETIME COMMENT '采集时间',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10"""
+
+_DINGTALK_MATERIAL_ANALYSIS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_outdoor_material_analysis (
+    record_id VARCHAR(255) COMMENT '钉钉行ID (unique key)',
+    jo VARCHAR(255) COMMENT 'Jo',
+    date VARCHAR(100) COMMENT 'Date',
+    username VARCHAR(255) COMMENT 'Username',
+    real_name VARCHAR(255) COMMENT '真名',
+    amount_usd VARCHAR(100) COMMENT '金额（USD）',
+    include_fee VARCHAR(50) COMMENT '包含手续费',
+    round_actual_amount VARCHAR(100) COMMENT 'Round (实际支付金额）',
+    cost_sharing VARCHAR(255) COMMENT '费用均摊',
+    cost_attribution VARCHAR(255) COMMENT '费用归属',
+    store_attribution VARCHAR(255) COMMENT '店铺归属',
+    delivery_url TEXT COMMENT '交付链接',
+    payment_method VARCHAR(255) COMMENT '支付方式',
+    payee_type VARCHAR(100) COMMENT '收款人是个人还是公司',
+    contract VARCHAR(255) COMMENT '合同',
+    contract_supplement VARCHAR(255) COMMENT '合同补件',
+    w9_w8 VARCHAR(255) COMMENT 'W-9/W-8',
+    cooperation_content TEXT COMMENT '合作内容',
+    other_attachments TEXT COMMENT '其他附件',
+    payment_notes TEXT COMMENT '支付备注',
+    status VARCHAR(100) COMMENT '状态',
+    application_number VARCHAR(255) COMMENT '申请序号',
+    collected_at DATETIME COMMENT '采集时间',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10"""
+
+_DINGTALK_OUTDOOR_PARAMS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_outdoor_params (
+    record_id VARCHAR(255) COMMENT '钉钉行ID (unique key)',
+    collected_at DATETIME COMMENT '采集时间',
+    raw_data TEXT COMMENT '原始字段数据 (JSON)',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10"""
+
+# ---------------------------------------------------------------------------
+# Awin ODS 表
+# ---------------------------------------------------------------------------
+
+_AWIN_TRANSACTIONS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_awin_transactions (
+    transaction_id VARCHAR(255) COMMENT 'Transaction ID (unique key)',
+    publisher_id VARCHAR(255) COMMENT 'Publisher ID',
+    publisher_name VARCHAR(500) COMMENT 'Publisher name',
+    commission_status VARCHAR(100) COMMENT 'Commission status',
+    commission_amount DECIMAL(18,4) COMMENT 'Commission amount',
+    sale_amount DECIMAL(18,4) COMMENT 'Sale amount',
+    click_ref VARCHAR(255) COMMENT 'Click reference',
+    transaction_date DATETIME COMMENT 'Transaction date',
+    validation_date DATETIME COMMENT 'Validation date',
+    transaction_type VARCHAR(100) COMMENT 'Transaction type',
+    commission_group_id VARCHAR(255) COMMENT 'Commission group ID',
+    commission_group_name VARCHAR(500) COMMENT 'Commission group name',
+    aov DECIMAL(18,4) COMMENT 'Average order value',
+    clicks BIGINT COMMENT 'Clicks',
+    impressions BIGINT COMMENT 'Impressions',
+    conversion_rate DECIMAL(10,4) COMMENT 'Conversion rate',
+    cpa DECIMAL(18,4) COMMENT 'Cost per acquisition',
+    cpc DECIMAL(18,4) COMMENT 'Cost per click',
+    roi DECIMAL(10,4) COMMENT 'Return on investment',
+    total_commission DECIMAL(18,4) COMMENT 'Total commission',
+    total_transactions BIGINT COMMENT 'Total transactions',
+    total_value DECIMAL(18,4) COMMENT 'Total value',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(transaction_id) DISTRIBUTED BY HASH(transaction_id) BUCKETS 10"""
+
+# ---------------------------------------------------------------------------
+# PartnerBoost ODS 表
+# ---------------------------------------------------------------------------
+
+_PARTNERBOOST_PERFORMANCE = """CREATE TABLE IF NOT EXISTS hqware_test.ods_partnerboost_performance (
+    collect_date DATE COMMENT 'Data collection date',
+    publisher_id VARCHAR(255) COMMENT 'Publisher ID',
+    partner VARCHAR(500) COMMENT 'Partner name',
+    clicks BIGINT COMMENT 'Clicks',
+    epc DECIMAL(18,4) COMMENT 'Earnings per click',
+    transactions BIGINT COMMENT 'Transactions',
+    conversion_rate DECIMAL(10,4) COMMENT 'Conversion rate (%)',
+    gross_sales DECIMAL(18,4) COMMENT 'Gross sales',
+    aov DECIMAL(18,4) COMMENT 'Average order value',
+    avg_commission_rate DECIMAL(10,4) COMMENT 'Average commission rate (%)',
+    commission DECIMAL(18,4) COMMENT 'Commission',
+    network_fee DECIMAL(18,4) COMMENT 'Network fee',
+    total_payout DECIMAL(18,4) COMMENT 'Total payout',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(collect_date, publisher_id) DISTRIBUTED BY HASH(collect_date) BUCKETS 10"""
+
+# ---------------------------------------------------------------------------
+# YouTube ODS 表
+# ---------------------------------------------------------------------------
+
+_YOUTUBE_VIDEO_STATS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_youtube_video_stats (
+    video_id VARCHAR(255) COMMENT 'YouTube video ID (unique key)',
+    dingtalk_record_id VARCHAR(255) COMMENT '关联钉钉行ID',
+    kind VARCHAR(100) COMMENT 'Resource kind',
+    etag VARCHAR(255) COMMENT 'ETag',
+    title VARCHAR(500) COMMENT 'Video title (snippet.title)',
+    description TEXT COMMENT 'Video description (snippet.description)',
+    published_at DATETIME COMMENT 'Published at (snippet.publishedAt)',
+    channel_id VARCHAR(255) COMMENT 'Channel ID (snippet.channelId)',
+    channel_title VARCHAR(255) COMMENT 'Channel title (snippet.channelTitle)',
+    category_id VARCHAR(50) COMMENT 'Category ID (snippet.categoryId)',
+    default_language VARCHAR(50) COMMENT 'Default language (snippet.defaultLanguage)',
+    default_audio_language VARCHAR(50) COMMENT 'Default audio language',
+    live_broadcast_content VARCHAR(50) COMMENT 'Live broadcast content',
+    tags TEXT COMMENT 'Tags (JSON, snippet.tags)',
+    thumbnail_default_url TEXT COMMENT 'Thumbnail default URL',
+    thumbnail_medium_url TEXT COMMENT 'Thumbnail medium URL',
+    thumbnail_high_url TEXT COMMENT 'Thumbnail high URL',
+    thumbnail_standard_url TEXT COMMENT 'Thumbnail standard URL',
+    thumbnail_maxres_url TEXT COMMENT 'Thumbnail maxres URL',
+    view_count BIGINT COMMENT 'View count (statistics.viewCount)',
+    like_count BIGINT COMMENT 'Like count (statistics.likeCount)',
+    comment_count BIGINT COMMENT 'Comment count (statistics.commentCount)',
+    favorite_count BIGINT COMMENT 'Favorite count (statistics.favoriteCount)',
+    collected_at DATETIME COMMENT '采集时间',
+    etl_time DATETIME COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(video_id) DISTRIBUTED BY HASH(video_id) BUCKETS 10"""
+
+# ---------------------------------------------------------------------------
+# 水位线表
+# ---------------------------------------------------------------------------
+
+_ETL_WATERMARK = """CREATE TABLE IF NOT EXISTS hqware_test.etl_watermark (
+    source VARCHAR(100) COMMENT 'Data source name',
+    table_name VARCHAR(255) COMMENT 'Table name',
+    last_success_time DATETIME COMMENT 'Last successful sync time',
+    run_mode VARCHAR(50) COMMENT 'Run mode (full/incremental)',
+    updated_at DATETIME COMMENT 'Watermark updated at'
+) ENGINE=OLAP UNIQUE KEY(source, table_name) DISTRIBUTED BY HASH(source) BUCKETS 10"""
+
+# ---------------------------------------------------------------------------
+# 建表列表（按数据源分组）
+# ---------------------------------------------------------------------------
+
 CREATE_TABLES_SQL = [
     "CREATE DATABASE IF NOT EXISTS hqware_test",
-
-    # TripleWhale tables
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_pixel_orders (
-        order_id VARCHAR(255),
-        event_date DATE,
-        channel VARCHAR(100),
-        amount DECIMAL(18, 2),
-        currency VARCHAR(10),
-        created_at DATETIME,
-        updated_at DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(order_id) DISTRIBUTED BY HASH(order_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_pixel_joined (
-        event_date DATE,
-        channel VARCHAR(100),
-        account_id VARCHAR(255),
-        campaign_id VARCHAR(255),
-        adset_id VARCHAR(255),
-        ad_id VARCHAR(255),
-        impressions BIGINT,
-        clicks BIGINT,
-        spend DECIMAL(18, 2)
-    ) ENGINE=OLAP UNIQUE KEY(event_date, channel, account_id, campaign_id, adset_id, ad_id) DISTRIBUTED BY HASH(event_date) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_sessions (
-        session_id VARCHAR(255),
-        event_date DATE,
-        channel VARCHAR(100),
-        duration_seconds INT,
-        created_at DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(session_id) DISTRIBUTED BY HASH(session_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_product_analytics (
-        event_date DATE,
-        entity VARCHAR(100),
-        id VARCHAR(255),
-        revenue DECIMAL(18, 2),
-        units_sold INT
-    ) ENGINE=OLAP UNIQUE KEY(event_date, entity, id) DISTRIBUTED BY HASH(event_date) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_pixel_keywords_joined (
-        event_date DATE,
-        channel VARCHAR(100),
-        keyword_id VARCHAR(255),
-        impressions BIGINT,
-        clicks BIGINT
-    ) ENGINE=OLAP UNIQUE KEY(event_date, channel, keyword_id) DISTRIBUTED BY HASH(event_date) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_ads (
-        event_date DATE,
-        channel VARCHAR(100),
-        account_id VARCHAR(255),
-        campaign_id VARCHAR(255),
-        adset_id VARCHAR(255),
-        ad_id VARCHAR(255),
-        spend DECIMAL(18, 2),
-        impressions BIGINT
-    ) ENGINE=OLAP UNIQUE KEY(event_date, channel, account_id, campaign_id, adset_id, ad_id) DISTRIBUTED BY HASH(event_date) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_social_media_comments (
-        comment_id VARCHAR(255),
-        post_id VARCHAR(255),
-        author_id VARCHAR(255),
-        content TEXT,
-        created_at DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(comment_id) DISTRIBUTED BY HASH(comment_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_social_media_pages (
-        event_date DATE,
-        page_id VARCHAR(255),
-        channel VARCHAR(100),
-        followers BIGINT,
-        engagement_rate DECIMAL(5, 2)
-    ) ENGINE=OLAP UNIQUE KEY(event_date, page_id, channel) DISTRIBUTED BY HASH(event_date) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_creatives (
-        event_date DATE,
-        channel VARCHAR(100),
-        ad_id VARCHAR(255),
-        asset_id VARCHAR(255),
-        creative_type VARCHAR(50),
-        performance_score DECIMAL(5, 2)
-    ) ENGINE=OLAP UNIQUE KEY(event_date, channel, ad_id, asset_id) DISTRIBUTED BY HASH(event_date) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tw_ai_visibility (
-        event_date DATE,
-        visibility_score DECIMAL(5, 2),
-        trend VARCHAR(20)
-    ) ENGINE=OLAP UNIQUE KEY(event_date) DISTRIBUTED BY HASH(event_date) BUCKETS 10""",
-
-    # TikTok tables
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_return_refund (
-        return_id VARCHAR(255),
-        order_id VARCHAR(255),
-        create_time BIGINT,
-        update_time BIGINT,
-        return_type VARCHAR(50),
-        return_status VARCHAR(50),
-        refund_amount DECIMAL(18,4),
-        currency VARCHAR(10),
-        reason VARCHAR(500),
-        etl_time DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(return_id) DISTRIBUTED BY HASH(return_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_video_performances (
-        video_id VARCHAR(255),
-        collect_date DATE,
-        video_title VARCHAR(500),
-        views BIGINT,
-        likes BIGINT,
-        comments BIGINT,
-        shares BIGINT,
-        product_clicks BIGINT,
-        product_impressions BIGINT,
-        orders BIGINT,
-        gmv_amount DECIMAL(18,4),
-        gmv_currency VARCHAR(10),
-        etl_time DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(video_id, collect_date) DISTRIBUTED BY HASH(video_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_shop_product_performance (
-        product_id VARCHAR(255),
-        collect_date DATE,
-        views BIGINT,
-        clicks BIGINT,
-        orders BIGINT,
-        revenue DECIMAL(18,4),
-        currency VARCHAR(10),
-        conversion_rate DECIMAL(10,4),
-        etl_time DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(product_id, collect_date) DISTRIBUTED BY HASH(product_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_shop_video_performance_detail (
-        video_id VARCHAR(255),
-        collect_date DATE,
-        latest_available_date VARCHAR(50),
-        views BIGINT,
-        likes BIGINT,
-        comments BIGINT,
-        shares BIGINT,
-        customers BIGINT,
-        gmv_amount DECIMAL(18,4),
-        gmv_currency VARCHAR(10),
-        etl_time DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(video_id, collect_date) DISTRIBUTED BY HASH(video_id) BUCKETS 10""",
-
-    # DingTalk tables
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_kol_tidwe_content (
-        record_id VARCHAR(255),
-        event_date DATE,
-        content_url TEXT,
-        content_type VARCHAR(50),
-        created_at DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(record_id) DISTRIBUTED BY HASH(record_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_kol_tidwe_kol_info (
-        kol_id VARCHAR(255),
-        kol_name VARCHAR(255),
-        followers BIGINT,
-        engagement_rate DECIMAL(5, 2)
-    ) ENGINE=OLAP UNIQUE KEY(kol_id) DISTRIBUTED BY HASH(kol_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_kol_tidwe_sample (
-        sample_id VARCHAR(255),
-        kol_id VARCHAR(255),
-        sample_data TEXT
-    ) ENGINE=OLAP UNIQUE KEY(sample_id) DISTRIBUTED BY HASH(sample_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_outdoor_material_analysis (
-        material_id VARCHAR(255),
-        event_date DATE,
-        analysis_result TEXT
-    ) ENGINE=OLAP UNIQUE KEY(material_id) DISTRIBUTED BY HASH(material_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_outdoor_params (
-        param_id VARCHAR(255),
-        param_name VARCHAR(255),
-        param_value TEXT
-    ) ENGINE=OLAP UNIQUE KEY(param_id) DISTRIBUTED BY HASH(param_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_outdoor_raw_material (
-        material_id VARCHAR(255),
-        event_date DATE,
-        material_type VARCHAR(50),
-        raw_data TEXT
-    ) ENGINE=OLAP UNIQUE KEY(material_id) DISTRIBUTED BY HASH(material_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_outdoor_shoot_kol (
-        shoot_id VARCHAR(255),
-        kol_id VARCHAR(255),
-        event_date DATE,
-        shoot_status VARCHAR(50)
-    ) ENGINE=OLAP UNIQUE KEY(shoot_id) DISTRIBUTED BY HASH(shoot_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_video_delivery (
-        delivery_id VARCHAR(255),
-        video_id VARCHAR(255),
-        event_date DATE,
-        delivery_status VARCHAR(50)
-    ) ENGINE=OLAP UNIQUE KEY(delivery_id) DISTRIBUTED BY HASH(delivery_id) BUCKETS 10""",
-
-    # AWIN table
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_awin_transactions (
-        transaction_id VARCHAR(255),
-        event_date DATE,
-        amount DECIMAL(18, 2),
-        commission DECIMAL(18, 2),
-        status VARCHAR(50)
-    ) ENGINE=OLAP UNIQUE KEY(transaction_id) DISTRIBUTED BY HASH(transaction_id) BUCKETS 10""",
-
-    # PartnerBoost table
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_partnerboost_performance (
-        performance_id VARCHAR(255),
-        event_date DATE,
-        impressions BIGINT,
-        clicks BIGINT,
-        conversions BIGINT,
-        revenue DECIMAL(18, 2)
-    ) ENGINE=OLAP UNIQUE KEY(performance_id) DISTRIBUTED BY HASH(performance_id) BUCKETS 10""",
-
-    # YouTube table
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_youtube_video_stats (
-        video_id VARCHAR(255),
-        event_date DATE,
-        views BIGINT,
-        likes BIGINT,
-        comments BIGINT,
-        shares BIGINT,
-        duration_seconds INT,
-        published_at DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(video_id) DISTRIBUTED BY HASH(video_id) BUCKETS 10""",
-
-    # Watermark table for incremental sync
-    """CREATE TABLE IF NOT EXISTS hqware_test.watermark (
-        source VARCHAR(100),
-        table_name VARCHAR(255),
-        watermark_value VARCHAR(255),
-        updated_at DATETIME
-    ) ENGINE=OLAP UNIQUE KEY(source, table_name) DISTRIBUTED BY HASH(source) BUCKETS 10""",
+    # TripleWhale
+    _TW_PIXEL_ORDERS,
+    _TW_PIXEL_JOINED,
+    _TW_SESSIONS,
+    _TW_PRODUCT_ANALYTICS,
+    _TW_PIXEL_KEYWORDS_JOINED,
+    _TW_ADS,
+    _TW_SOCIAL_MEDIA_COMMENTS,
+    _TW_SOCIAL_MEDIA_PAGES,
+    _TW_CREATIVES,
+    _TW_AI_VISIBILITY,
+    # TikTok
+    _TIKTOK_RETURN_REFUND,
+    _TIKTOK_VIDEO_PERFORMANCES,
+    _TIKTOK_SHOP_PRODUCT_PERFORMANCE,
+    _TIKTOK_SHOP_VIDEO_PERFORMANCE_DETAIL,
+    # 钉钉
+    _DINGTALK_KOL_INFO,
+    _DINGTALK_KOL_SAMPLE,
+    _DINGTALK_KOL_CONTENT,
+    _DINGTALK_RAW_MATERIAL,
+    _DINGTALK_SHOOT_KOL,
+    _DINGTALK_VIDEO_DELIVERY,
+    _DINGTALK_MATERIAL_ANALYSIS,
+    _DINGTALK_OUTDOOR_PARAMS,
+    # Awin
+    _AWIN_TRANSACTIONS,
+    # PartnerBoost
+    _PARTNERBOOST_PERFORMANCE,
+    # YouTube
+    _YOUTUBE_VIDEO_STATS,
+    # 水位线
+    _ETL_WATERMARK,
 ]
 
+
 def init_database():
-    """Initialize all required tables in Doris test database"""
+    """Initialize all required ODS tables in Doris."""
     config = DorisConfig()
     db_config = config.DB_CONFIG
 
     print("=" * 70)
-    print("Doris Test Database Initialization")
+    print("Doris ODS Tables Initialization (CC#4 — full field coverage)")
     print("=" * 70)
-    print(f"Host: {db_config['host']}")
-    print(f"Port: {db_config['port']}")
-    print(f"Database: {db_config['database']}")
+    print(f"Host: {db_config['host']}  Port: {db_config['port']}")
+    print(f"Tables to create: {len(CREATE_TABLES_SQL) - 1}")
     print("=" * 70)
 
     try:
         conn = pymysql.connect(**db_config)
         print("\n[OK] Connected to Doris")
-
         try:
             with conn.cursor() as cursor:
                 for i, stmt in enumerate(CREATE_TABLES_SQL, 1):
                     try:
                         cursor.execute(stmt)
                         conn.commit()
-                        # Extract table name
                         if 'CREATE TABLE' in stmt:
                             table_name = stmt.split('hqware_test.')[1].split('(')[0].strip()
-                            print(f"[{i:2d}] Created table: {table_name}")
+                            print(f"[{i:2d}] Created: {table_name}")
                         elif 'CREATE DATABASE' in stmt:
                             print(f"[{i:2d}] Database ready")
                     except Exception as e:
@@ -290,13 +1257,14 @@ def init_database():
             conn.close()
 
         print("\n" + "=" * 70)
-        print("[SUCCESS] All tables initialized successfully!")
+        print("[SUCCESS] All ODS tables initialized!")
         print("=" * 70)
         return True
 
     except Exception as e:
         print(f"\n[FAILED] Initialization error: {e}")
         return False
+
 
 if __name__ == "__main__":
     success = init_database()

@@ -508,3 +508,19 @@ claude-sonnet-4-6
 - `tests/test_youtube_collector.py`（新建）
 - `_bmad-output/implementation-artifacts/7-4-youtube视频统计数据采集落库.md`（更新）
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`（更新）
+
+---
+
+## CC#4 变更记录（2026-04-17）
+
+**变更来源：** Sprint Change Proposal CC#4 — ODS 全字段补全 + 速率限制
+
+### 变更内容
+
+1. **ODS 表字段补全（ARCH14）**
+   - `ods_youtube_video_stats` 字段从 8 个补全至 25 个
+   - 新增：`kind`、`etag`、`description`、`channel_id`、`channel_title`、`category_id`、`default_language`、`default_audio_language`、`live_broadcast_content`、`tags`（JSON）、5 个 thumbnail URL、`favorite_count`
+   - 权威 DDL 定义已迁移至 `init_doris_tables.py`
+
+2. **速率限制（ARCH15）**
+   - `_fetch_video_details` 批量请求循环加 `time.sleep(0.3)`，防止 YouTube API 配额超限

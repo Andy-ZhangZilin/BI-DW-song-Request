@@ -363,3 +363,17 @@ def test_collect_happy_path(mock_pw, mock_write):
 - [Source: project-context.md#Playwright 爬虫规则] — sync_playwright、验证码处理、_BROWSER_ARGS
 - [Source: project-context.md#bi/ 子模块代码规范] — DorisConfig 单例、凭证不 import 主工具模块
 - [Source: project-context.md#git submodule 操作] — bi/ 内 commit + 主仓库更新引用两步流程
+
+---
+
+## CC#4 变更记录（2026-04-17）
+
+**变更来源：** Sprint Change Proposal CC#4 — ODS 全字段补全
+
+### 变更内容
+
+1. **ODS 表字段补全（ARCH14）**
+   - `ods_partnerboost_performance` 字段从 6 个补全至 13 个
+   - 新增：`publisher_id`、`epc`、`aov`、`avg_commission_rate`、`network_fee`、`total_payout`
+   - 唯一键从 `performance_id` 改为 `(collect_date, publisher_id)`（更符合实际数据结构）
+   - 权威 DDL 定义已迁移至 `init_doris_tables.py`

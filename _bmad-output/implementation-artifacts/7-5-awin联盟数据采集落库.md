@@ -565,3 +565,22 @@ claude-sonnet-4-6
 - [x] [Review][Defer] D1: full 模式先 reset 后 fetch，crash 窗口内水位线永久清零 [`awin_collector.py:247-248`] — deferred，spec 明确要求"先 reset"（Key 易错点 #6），属设计决策
 - [x] [Review][Defer] D2: `end_date` 可早于 `effective_start`（显式传入历史 end_date + 大回溯窗口）产生倒序日期范围 [`awin_collector.py:276`] — deferred，调用方责任，当前 AC 未覆盖此场景
 - [x] [Review][Defer] D3: `datetime.utcnow()` 在 Python 3.12+ 已废弃，timezone-naive [`awin_collector.py:283,288`] — deferred，当前运行环境 Python 3.11，暂不影响
+
+---
+
+## CC#4 变更记录（2026-04-17）
+
+**变更来源：** Sprint Change Proposal CC#4 — ODS 全字段补全 + 速率限制 + EARLIEST_DATE 统一
+
+### 变更内容
+
+1. **ODS 表字段补全（ARCH14）**
+   - `ods_awin_transactions` 字段从 5 个补全至 23 个
+   - 新增：`publisher_name`、`commission_status`、`click_ref`、`validation_date`、`transaction_type`、`commission_group_id/name`、`aov`、`clicks`、`impressions`、`conversion_rate`、`cpa`、`cpc`、`roi`、`total_commission`、`total_transactions`、`total_value`
+   - 权威 DDL 定义已迁移至 `init_doris_tables.py`
+
+2. **全量起始时间统一（ARCH16）**
+   - `AWIN_EARLIEST_DATE` 默认值从 `"2024-01-01"` 改为 `"2026-03-01"`
+
+3. **速率限制（ARCH15）**
+   - `_fetch_transactions` 翻页循环加 `time.sleep(0.2)`
