@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-16  # 8-2 done；8-3 done；6-2 done；6-3 done；7-1 done；7-2 done；7-3 done；7-5 done；7-4 done
+last_updated: 2026-04-17  # 7-2 代码审查通过 — done
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -101,6 +101,7 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: API 类数据源采集落库
+  # CC 2026-04-16: 7-2 范围调整 - 移除 3 个无数据路由，新增 1 个有数据路由（shop_video_performance_detail）
   epic-7: in-progress
   7-1-triplewhale数据采集落库: done
   7-2-tiktok-shop数据采集落库: done
@@ -110,9 +111,9 @@ development_status:
   epic-7-retrospective: optional
 
   # Epic 8: 爬虫类数据源采集落库
-  # Story 8.1 (CartSee) 暂缓: 爬虫页面结构已变更，待确认新方案
+  # Story 8.1 (CartSee) 延期: 爬虫页面结构已变更，待确认新方案后再排期
   epic-8: in-progress
-  8-1-cartsee-edm数据采集落库: blocked
+  8-1-cartsee-edm数据采集落库: deferred
   8-2-partnerboost联盟数据采集落库: done
   8-3-facebook-business-suite数据采集落库: done
   epic-8-retrospective: optional

@@ -1,6 +1,6 @@
 # Story 7.2：TikTok Shop 数据采集落库
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
