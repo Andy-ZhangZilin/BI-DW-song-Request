@@ -1,6 +1,6 @@
 # Story 7.2-CC3：TikTok Shop 数据采集落库 - 路由调整
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
