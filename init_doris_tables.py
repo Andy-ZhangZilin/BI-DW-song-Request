@@ -103,38 +103,60 @@ CREATE_TABLES_SQL = [
     ) ENGINE=OLAP UNIQUE KEY(event_date) DISTRIBUTED BY HASH(event_date) BUCKETS 10""",
 
     # TikTok tables
+    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_return_refund (
+        return_id VARCHAR(255),
+        order_id VARCHAR(255),
+        create_time BIGINT,
+        update_time BIGINT,
+        return_type VARCHAR(50),
+        return_status VARCHAR(50),
+        refund_amount DECIMAL(18,4),
+        currency VARCHAR(10),
+        reason VARCHAR(500),
+        etl_time DATETIME
+    ) ENGINE=OLAP UNIQUE KEY(return_id) DISTRIBUTED BY HASH(return_id) BUCKETS 10""",
+
+    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_video_performances (
+        video_id VARCHAR(255),
+        collect_date DATE,
+        video_title VARCHAR(500),
+        views BIGINT,
+        likes BIGINT,
+        comments BIGINT,
+        shares BIGINT,
+        product_clicks BIGINT,
+        product_impressions BIGINT,
+        orders BIGINT,
+        gmv_amount DECIMAL(18,4),
+        gmv_currency VARCHAR(10),
+        etl_time DATETIME
+    ) ENGINE=OLAP UNIQUE KEY(video_id, collect_date) DISTRIBUTED BY HASH(video_id) BUCKETS 10""",
+
     """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_shop_product_performance (
         product_id VARCHAR(255),
-        event_date DATE,
-        sales BIGINT,
-        revenue DECIMAL(18, 2),
+        collect_date DATE,
         views BIGINT,
-        clicks BIGINT
-    ) ENGINE=OLAP UNIQUE KEY(product_id) DISTRIBUTED BY HASH(product_id) BUCKETS 10""",
+        clicks BIGINT,
+        orders BIGINT,
+        revenue DECIMAL(18,4),
+        currency VARCHAR(10),
+        conversion_rate DECIMAL(10,4),
+        etl_time DATETIME
+    ) ENGINE=OLAP UNIQUE KEY(product_id, collect_date) DISTRIBUTED BY HASH(product_id) BUCKETS 10""",
 
     """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_shop_video_performance_detail (
         video_id VARCHAR(255),
         collect_date DATE,
         latest_available_date VARCHAR(50),
+        views BIGINT,
         likes BIGINT,
         comments BIGINT,
         shares BIGINT,
-        views BIGINT,
         customers BIGINT,
         gmv_amount DECIMAL(18,4),
         gmv_currency VARCHAR(10),
-        raw_json TEXT,
-        collected_at DATETIME DEFAULT NOW()
+        etl_time DATETIME
     ) ENGINE=OLAP UNIQUE KEY(video_id, collect_date) DISTRIBUTED BY HASH(video_id) BUCKETS 10""",
-
-    """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_video_performances (
-        video_id VARCHAR(255),
-        event_date DATE,
-        views BIGINT,
-        likes BIGINT,
-        shares BIGINT,
-        comments BIGINT
-    ) ENGINE=OLAP UNIQUE KEY(video_id) DISTRIBUTED BY HASH(video_id) BUCKETS 10""",
 
     # DingTalk tables
     """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtalk_kol_tidwe_content (
