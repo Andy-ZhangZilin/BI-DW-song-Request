@@ -794,7 +794,7 @@ _TIKTOK_RETURN_REFUND = """CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_ret
     handover_method VARCHAR(100) COMMENT 'Handover method',
     is_combined_return BOOLEAN COMMENT 'Is combined return',
     is_quick_refund BOOLEAN COMMENT 'Is quick refund',
-    role VARCHAR(100) COMMENT 'Role',
+    `role` VARCHAR(100) COMMENT 'Role',
     refund_amount_currency VARCHAR(20) COMMENT 'Refund amount currency',
     refund_amount_refund_subtotal DECIMAL(18,4) COMMENT 'Refund subtotal',
     refund_amount_refund_shipping_fee DECIMAL(18,4) COMMENT 'Refund shipping fee',
