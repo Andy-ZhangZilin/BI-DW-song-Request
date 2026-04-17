@@ -248,23 +248,25 @@ def init_database():
         conn = pymysql.connect(**db_config)
         print("\n[OK] Connected to Doris")
 
-        with conn.cursor() as cursor:
-            for i, stmt in enumerate(CREATE_TABLES_SQL, 1):
-                try:
-                    cursor.execute(stmt)
-                    conn.commit()
-                    # Extract table name
-                    if 'CREATE TABLE' in stmt:
-                        table_name = stmt.split('hqware_test.')[1].split('(')[0].strip()
-                        print(f"[{i:2d}] Created table: {table_name}")
-                    elif 'CREATE DATABASE' in stmt:
-                        print(f"[{i:2d}] Database ready")
-                except Exception as e:
-                    print(f"[ERROR] Statement {i} failed: {e}")
-                    conn.rollback()
-                    raise
+        try:
+            with conn.cursor() as cursor:
+                for i, stmt in enumerate(CREATE_TABLES_SQL, 1):
+                    try:
+                        cursor.execute(stmt)
+                        conn.commit()
+                        # Extract table name
+                        if 'CREATE TABLE' in stmt:
+                            table_name = stmt.split('hqware_test.')[1].split('(')[0].strip()
+                            print(f"[{i:2d}] Created table: {table_name}")
+                        elif 'CREATE DATABASE' in stmt:
+                            print(f"[{i:2d}] Database ready")
+                    except Exception as e:
+                        print(f"[ERROR] Statement {i} failed: {e}")
+                        conn.rollback()
+                        raise
+        finally:
+            conn.close()
 
-        conn.close()
         print("\n" + "=" * 70)
         print("[SUCCESS] All tables initialized successfully!")
         print("=" * 70)

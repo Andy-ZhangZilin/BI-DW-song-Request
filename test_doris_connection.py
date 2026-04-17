@@ -33,7 +33,10 @@ def test_connection():
         with conn.cursor() as cursor:
             cursor.execute("SELECT VERSION()")
             version = cursor.fetchone()
-            print(f"[OK] Doris version: {version[0]}")
+            if version:
+                print(f"[OK] Doris version: {version[0]}")
+            else:
+                print("[ERROR] Failed to get Doris version")
 
             # List tables
             cursor.execute("SHOW TABLES")

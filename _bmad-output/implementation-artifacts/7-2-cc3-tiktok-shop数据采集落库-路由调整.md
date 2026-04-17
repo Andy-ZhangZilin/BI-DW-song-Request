@@ -1,6 +1,6 @@
 # Story 7.2-CC3：TikTok Shop 数据采集落库 - 路由调整
 
-Status: review
+Status: done
 
 ## Story
 
@@ -142,6 +142,30 @@ CREATE TABLE IF NOT EXISTS hqware_test.ods_tiktok_shop_video_performance_detail 
 - ✅ 所有测试通过
 - ✅ Story 7-2 文档已更新
 - ✅ sprint-status.yaml 已更新
+
+## Review Findings
+
+### Patch Items (已修复)
+
+- [x] [Review][Patch] Test file references deleted functions [tests/test_tiktok_collector.py]
+  - ✅ 已修复：移除了对已删除函数的 mock，更新所有测试用例从 6 个路由改为 4 个，新增 shop_video_performance_detail 测试。
+
+- [x] [Review][Patch] CLI help text outdated [bi/python_sdk/outdoor_collector/collectors/tiktok_collector.py:424]
+  - ✅ 已修复：第 424 行从"默认全部 6 个"改为"默认全部 4 个"。
+
+- [x] [Review][Patch] Missing connection cleanup in init_doris_tables.py [init_doris_tables.py:267]
+  - ✅ 已修复：添加 try-finally 块确保异常时连接也会被关闭。
+
+- [x] [Review][Patch] Null pointer dereference in test_doris_connection.py [test_doris_connection.py:36]
+  - ✅ 已修复：添加 None 检查，确保 fetchone() 返回值有效后再访问。
+
+### Deferred Items (已存在，非本次变更引入)
+
+- [x] [Review][Defer] Unprotected strptime calls for date parsing [tiktok_collector.py:144,194,233,288] — deferred, pre-existing
+  - 无效的日期格式会导致 ValueError。这是代码库中的现有模式，不是由 CC#3 变更引入的。外层 try-catch 会处理。
+
+- [x] [Review][Defer] Unvalidated unique_keys schema mismatch [doris_writer.py] — deferred, pre-existing
+  - `doris_writer.py` 不验证 unique_keys 是否与表 schema 匹配。这是现有问题，不是本次变更引入的。
 
 ## Related Documents
 
