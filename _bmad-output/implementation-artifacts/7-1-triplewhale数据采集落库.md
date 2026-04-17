@@ -1163,3 +1163,24 @@ sys.path.insert(0, _OUTDOOR_COLLECTOR_ROOT)
 
 - TripleWhale 的 `created_at` 字段是 DATETIME，SQL 过滤必须用 `DATE()` 转换
 - ai_visibility_table 目前无历史数据，表结构极简，待有数据时扩展字段
+
+---
+
+## CC#4 变更记录（2026-04-17）
+
+**变更来源：** Sprint Change Proposal CC#4 — ODS 全字段补全 + 速率限制 + EARLIEST_DATE 统一
+
+### 变更内容
+
+1. **ODS 表字段补全（ARCH14）**
+   - 所有 10 张 TripleWhale 表字段从 3~8 个补全至实际接口返回的完整字段数（30~143 个）
+   - 嵌套 list/dict 字段序列化为 JSON TEXT 存储
+   - 英文字段直接使用原名，每表统一追加 `etl_time DATETIME`
+   - 权威 DDL 定义已迁移至 `init_doris_tables.py`（`hqware_test` 数据库）
+
+2. **全量起始时间统一（ARCH16）**
+   - `TABLE_EARLIEST_DATES` 所有表统一改为 `"2026-03-01"`
+   - 测试完成后统一修改此常量以拉取更早历史数据
+
+3. **速率限制（ARCH15）**
+   - `_collect_sessions_by_day` 按天循环加 `time.sleep(0.2)`，防止 API 封禁

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-17  # 7-2 代码审查通过 — done
+last_updated: 2026-04-17  # CC#4 ODS全字段补全 + 速率限制 + EARLIEST_DATE统一
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -109,6 +109,9 @@ development_status:
   7-3-钉钉多维表数据采集落库: done
   7-4-youtube视频统计数据采集落库: done
   7-5-awin联盟数据采集落库: done
+  # CC#4 2026-04-17: ODS全字段补全 + 速率限制 + EARLIEST_DATE=2026-03-01
+  # init_doris_tables.py 全量重写（26张表），architecture.md 新增 ARCH14/15/16
+  # tiktok/tw/awin/youtube collector 加速率限制，全量起始时间统一为 2026-03-01
   epic-7-retrospective: optional
 
   # Epic 8: 爬虫类数据源采集落库

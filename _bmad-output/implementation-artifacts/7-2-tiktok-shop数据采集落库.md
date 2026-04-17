@@ -607,3 +607,25 @@ git commit -m "feat(story-7.2): TikTok Shop 数据采集落库 — done" \
 - [x] [Review][Defer] W4: `_fetch_product_ids` / `_fetch_campaigns` 无翻页（硬限 50 条）— 已知限制，大规模店铺数据不完整，defer
 - [x] [Review][Defer] W5: full mode `reset_watermark` 批量执行后进程中断无法恢复 — 架构设计问题，defer
 - [x] [Review][Defer] W6: `sys.path.insert` 永久修改 — 全 codebase 一致模式，defer
+
+---
+
+## CC#4 变更记录（2026-04-17）
+
+**变更来源：** Sprint Change Proposal CC#4 — ODS 全字段补全 + 速率限制 + EARLIEST_DATE 统一
+
+### 变更内容
+
+1. **ODS 表字段补全（ARCH14）**
+   - 4 张 TikTok 表字段从 9~13 个补全至完整字段数（20~30 个）
+   - 嵌套结构（`return_line_items`、`discount_amount`、`sales_breakdowns` 等）序列化为 JSON TEXT
+   - 权威 DDL 定义已迁移至 `init_doris_tables.py`
+
+2. **全量起始时间统一（ARCH16）**
+   - `EARLIEST_DATE` 从 `"2024-01-01"` 改为 `"2026-03-01"`
+
+3. **速率限制（ARCH15）**
+   - `_collect_return_refund` 翻页加 `time.sleep(0.2)`
+   - `_collect_video_performances` 翻页加 `time.sleep(0.2)`
+   - `_collect_shop_product_performance` 逐 product_id 查询加 `time.sleep(0.3)`
+   - `_collect_shop_video_performance_detail` 逐 video_id 查询加 `time.sleep(0.3)`

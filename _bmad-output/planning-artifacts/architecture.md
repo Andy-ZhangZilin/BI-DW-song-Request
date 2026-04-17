@@ -972,3 +972,35 @@ Story 8.2（PartnerBoost 爬虫）→ Story 8.3（Facebook Business Suite 爬虫
 
 **注意：** Story 8.1（CartSee）保持 `blocked` 状态，不在当前排期内。
 10. `sources/social_media.py` stub
+
+---
+
+## Phase 2 补充架构决策（CC#4 — 2026-04-17）
+
+> 来源：Sprint Change Proposal CC#4，ODS 层字段补全 + 速率限制规范
+
+### ARCH14：ODS 层全字段落库原则
+
+- ODS 表必须包含 API 接口返回的**所有字段**，不做业务筛选
+- 字段命名规则：
+  - API 返回字段为**英文**：直接使用原字段名（保持与接口一致）
+  - API 返回字段为**中文**（如钉钉多维表）：转为英文 snake_case，`COMMENT` 写原中文字段名
+- 嵌套 list / dict 字段：序列化为 JSON 字符串，类型用 `TEXT`，`COMMENT` 注明 `(JSON)`
+- 每张 ODS 表统一追加 `etl_time DATETIME COMMENT 'ETL写入时间'`
+
+### ARCH15：API 调用速率限制规范
+
+所有 collector 在以下场景必须加入速率控制，防止 API 封禁：
+
+| 场景 | 规则 |
+|------|------|
+| 逐 ID 查询（如 TikTok shop_product_performance、shop_video_performance_detail） | 每次请求后 `sleep(0.3s)`；批量超过 100 条时 `sleep(1s)` |
+| 翻页类请求 | 每页请求后 `sleep(0.2s)` |
+| 遇到 429 / rate_limit 错误 | 指数退避重试，最多 3 次，间隔 `2^n` 秒（2s / 4s / 8s） |
+| 爬虫类（Playwright） | 页面操作间隔保持现有超时设置，无需额外 sleep |
+
+### ARCH16：全量拉取统一起始时间常量
+
+- 所有 collector 统一使用常量 `EARLIEST_DATE = "2026-03-01"` 作为全量拉取起始日期
+- 测试验证通过后，统一修改此常量以拉取更早的历史数据
+- 常量定义在各 collector 文件顶部，便于集中修改
