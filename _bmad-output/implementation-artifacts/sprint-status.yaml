@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-17  # 7-2 代码审查修复完成
+last_updated: 2026-04-17  # 7-2 代码审查通过 — done
 project: outdoor-data-validator
 
 project_key: NOKEY
@@ -104,7 +104,7 @@ development_status:
   # CC 2026-04-16: 7-2 范围调整 - 移除 3 个无数据路由，新增 1 个有数据路由（shop_video_performance_detail）
   epic-7: in-progress
   7-1-triplewhale数据采集落库: done
-  7-2-tiktok-shop数据采集落库: review
+  7-2-tiktok-shop数据采集落库: done
   7-3-钉钉多维表数据采集落库: done
   7-4-youtube视频统计数据采集落库: done
   7-5-awin联盟数据采集落库: done
