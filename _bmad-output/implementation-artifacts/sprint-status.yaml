@@ -102,6 +102,7 @@ development_status:
 
   # Epic 7: API 类数据源采集落库
   # CC 2026-04-16: 7-2 范围调整 - 移除 3 个无数据路由，新增 1 个有数据路由（shop_video_performance_detail）
+  # CC 2026-04-17: 7-2-cc3 代码审查通过 — 所有 patch 已修复，Story 标记为 done
   epic-7: in-progress
   7-1-triplewhale数据采集落库: done
   7-2-tiktok-shop数据采集落库: done

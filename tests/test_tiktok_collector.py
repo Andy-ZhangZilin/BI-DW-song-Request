@@ -1,7 +1,9 @@
-"""TikTok Shop 数据采集落库单元测试（Story 7.2）。
+"""TikTok Shop 数据采集落库单元测试（Story 7.2-CC3）。
 
 所有外部依赖（TikTokClient、write_to_doris、水位线）均通过 mock 隔离，
 测试不需要真实的 TikTok 凭证或 Doris 连接。
+
+CC#3 变更（2026-04-17）：路由从 6 个减少到 4 个，移除 3 个无数据路由。
 """
 
 import os
@@ -34,7 +36,7 @@ def _make_client_mock():
 
 
 # ---------------------------------------------------------------------------
-# 测试：正常路径（6 个路由全部写入成功）
+# 测试：正常路径（4 个路由全部写入成功）
 # ---------------------------------------------------------------------------
 
 @patch.dict(os.environ, FAKE_ENV)
@@ -43,30 +45,26 @@ def _make_client_mock():
 @patch("tiktok_collector.update_watermark")
 @patch("tiktok_collector.write_to_doris", return_value=10)
 def test_collect_all_routes_happy_path(mock_write, mock_upd, mock_get_wm, mock_cls):
-    """collect() 正常路径：6 个路由均成功写入 Doris（AC1-4）。"""
+    """collect() 正常路径：4 个路由均成功写入 Doris（AC1-4）。"""
     mock_cls.return_value = _make_client_mock()
 
     fake_records = {
         "return_refund":               [{"return_id": "r1", "order_id": "o1"}],
-        "affiliate_creator_orders":    [{"order_id": "o2"}],
         "video_performances":          [{"video_id": "v1", "collect_date": "2026-01-01"}],
         "shop_product_performance":    [{"product_id": "p1", "collect_date": "2026-01-01"}],
-        "affiliate_campaign_performance": [{"campaign_id": "c1", "product_id": "p1", "collect_date": "2026-01-01"}],
-        "affiliate_sample_status":     [{"campaign_id": "c1", "product_id": "p1", "creator_temp_id": "t1", "collect_date": "2026-01-01"}],
+        "shop_video_performance_detail": [{"video_id": "v1", "collect_date": "2026-01-01"}],
     }
 
     with patch.object(tc, "_collect_return_refund",            return_value=fake_records["return_refund"]), \
-         patch.object(tc, "_collect_affiliate_creator_orders", return_value=fake_records["affiliate_creator_orders"]), \
          patch.object(tc, "_collect_video_performances",       return_value=fake_records["video_performances"]), \
          patch.object(tc, "_collect_shop_product_performance", return_value=fake_records["shop_product_performance"]), \
-         patch.object(tc, "_collect_affiliate_campaign_performance", return_value=fake_records["affiliate_campaign_performance"]), \
-         patch.object(tc, "_collect_affiliate_sample_status",  return_value=fake_records["affiliate_sample_status"]):
+         patch.object(tc, "_collect_shop_video_performance_detail", return_value=fake_records["shop_video_performance_detail"]):
         results = tc.collect(mode="incremental")
 
     assert set(results.keys()) == set(tc.ROUTES.keys())
     assert all(v == 10 for v in results.values()), f"期望每路由写入 10 行，实际：{results}"
-    assert mock_write.call_count == 6
-    assert mock_upd.call_count == 6
+    assert mock_write.call_count == 4
+    assert mock_upd.call_count == 4
 
 
 # ---------------------------------------------------------------------------
@@ -79,20 +77,18 @@ def test_collect_all_routes_happy_path(mock_write, mock_upd, mock_get_wm, mock_c
 @patch("tiktok_collector.update_watermark")
 @patch("tiktok_collector.write_to_doris", return_value=5)
 def test_single_route_failure_does_not_propagate(mock_write, mock_upd, mock_get_wm, mock_cls):
-    """单路由失败不传染（AC7）：return_refund 抛异常，其余 5 个正常写入。"""
+    """单路由失败不传染（AC7）：return_refund 抛异常，其余 3 个正常写入。"""
     mock_cls.return_value = _make_client_mock()
 
     with patch.object(tc, "_collect_return_refund",            side_effect=RuntimeError("API error")), \
-         patch.object(tc, "_collect_affiliate_creator_orders", return_value=[{"order_id": "o1"}]), \
          patch.object(tc, "_collect_video_performances",       return_value=[{"video_id": "v1", "collect_date": "2026-01-01"}]), \
          patch.object(tc, "_collect_shop_product_performance", return_value=[{"product_id": "p1", "collect_date": "2026-01-01"}]), \
-         patch.object(tc, "_collect_affiliate_campaign_performance", return_value=[{"campaign_id": "c1", "product_id": "p1", "collect_date": "2026-01-01"}]), \
-         patch.object(tc, "_collect_affiliate_sample_status",  return_value=[{"campaign_id": "c1", "product_id": "p1", "creator_temp_id": "t1", "collect_date": "2026-01-01"}]):
+         patch.object(tc, "_collect_shop_video_performance_detail", return_value=[{"video_id": "v1", "collect_date": "2026-01-01"}]):
         results = tc.collect(mode="incremental")
 
     assert results["return_refund"] == 0, "失败路由应返回 0"
-    assert results["affiliate_creator_orders"] == 5, "正常路由应正常写入"
-    assert mock_write.call_count == 5, "仅 5 个路由写入"
+    assert results["video_performances"] == 5, "正常路由应正常写入"
+    assert mock_write.call_count == 3, "仅 3 个路由写入"
 
 
 # ---------------------------------------------------------------------------
@@ -109,11 +105,9 @@ def test_empty_data_skips_write(mock_write, mock_upd, mock_get_wm, mock_cls):
     mock_cls.return_value = _make_client_mock()
 
     with patch.object(tc, "_collect_return_refund",            return_value=[]), \
-         patch.object(tc, "_collect_affiliate_creator_orders", return_value=[]), \
          patch.object(tc, "_collect_video_performances",       return_value=[]), \
          patch.object(tc, "_collect_shop_product_performance", return_value=[]), \
-         patch.object(tc, "_collect_affiliate_campaign_performance", return_value=[]), \
-         patch.object(tc, "_collect_affiliate_sample_status",  return_value=[]):
+         patch.object(tc, "_collect_shop_video_performance_detail", return_value=[]):
         results = tc.collect(mode="incremental")
 
     mock_write.assert_not_called()
@@ -136,15 +130,13 @@ def test_full_mode_resets_watermarks(mock_write, mock_reset, mock_upd, mock_get_
     mock_cls.return_value = _make_client_mock()
 
     with patch.object(tc, "_collect_return_refund",            return_value=[{"return_id": "r1"}]), \
-         patch.object(tc, "_collect_affiliate_creator_orders", return_value=[{"order_id": "o1"}]), \
          patch.object(tc, "_collect_video_performances",       return_value=[{"video_id": "v1", "collect_date": "2026-01-01"}]), \
          patch.object(tc, "_collect_shop_product_performance", return_value=[{"product_id": "p1", "collect_date": "2026-01-01"}]), \
-         patch.object(tc, "_collect_affiliate_campaign_performance", return_value=[{"campaign_id": "c1", "product_id": "p1", "collect_date": "2026-01-01"}]), \
-         patch.object(tc, "_collect_affiliate_sample_status",  return_value=[{"campaign_id": "c1", "product_id": "p1", "creator_temp_id": "t1", "collect_date": "2026-01-01"}]):
+         patch.object(tc, "_collect_shop_video_performance_detail", return_value=[{"video_id": "v1", "collect_date": "2026-01-01"}]):
         tc.collect(mode="full")
 
-    # 6 个路由各重置一次
-    assert mock_reset.call_count == 6
+    # 4 个路由各重置一次
+    assert mock_reset.call_count == 4
 
 
 # ---------------------------------------------------------------------------
@@ -161,11 +153,9 @@ def test_dry_run_skips_write(mock_write, mock_upd, mock_get_wm, mock_cls):
     mock_cls.return_value = _make_client_mock()
 
     with patch.object(tc, "_collect_return_refund",            return_value=[{"return_id": "r1"}]), \
-         patch.object(tc, "_collect_affiliate_creator_orders", return_value=[{"order_id": "o1"}]), \
          patch.object(tc, "_collect_video_performances",       return_value=[{"video_id": "v1", "collect_date": "2026-01-01"}]), \
          patch.object(tc, "_collect_shop_product_performance", return_value=[{"product_id": "p1", "collect_date": "2026-01-01"}]), \
-         patch.object(tc, "_collect_affiliate_campaign_performance", return_value=[{"campaign_id": "c1", "product_id": "p1", "collect_date": "2026-01-01"}]), \
-         patch.object(tc, "_collect_affiliate_sample_status",  return_value=[{"campaign_id": "c1", "product_id": "p1", "creator_temp_id": "t1", "collect_date": "2026-01-01"}]):
+         patch.object(tc, "_collect_shop_video_performance_detail", return_value=[{"video_id": "v1", "collect_date": "2026-01-01"}]):
         results = tc.collect(mode="incremental", dry_run=True)
 
     mock_write.assert_not_called()
@@ -231,21 +221,54 @@ def test_invalid_route_raises():
 
 
 # ---------------------------------------------------------------------------
-# 测试：D1 修复 — _fetch_creator_temp_id 传入过滤条件
+# 测试：新增 shop_video_performance_detail 采集函数
 # ---------------------------------------------------------------------------
 
-def test_fetch_creator_temp_id_passes_filters():
-    """_fetch_creator_temp_id 将 campaign_id/product_id 注入请求 body（D1 修复）。"""
+def test_collect_shop_video_performance_detail():
+    """_collect_shop_video_performance_detail 正常采集视频详细表现数据。"""
     mock_client = _make_client_mock()
-    mock_client.post.return_value = {
-        "code": 0,
-        "data": {"orders": [{"creator_temp_id": "cid_001"}]},
-    }
-    result = tc._fetch_creator_temp_id(mock_client, campaign_id="camp_1", product_id="prod_2")
-    assert result == "cid_001"
-    body = mock_client.post.call_args.kwargs.get("body", {})
-    assert body.get("campaign_id") == "camp_1", "body 应包含 campaign_id 过滤条件"
-    assert body.get("product_id") == "prod_2", "body 应包含 product_id 过滤条件"
+    mock_client.get.side_effect = [
+        # 第一次调用：获取视频 ID 列表
+        {
+            "code": 0,
+            "data": {"videos": [{"video_id": "v1"}, {"video_id": "v2"}]},
+        },
+        # 第二次调用：获取 v1 的详细数据
+        {
+            "code": 0,
+            "data": {
+                "likes": 100,
+                "comments": 20,
+                "shares": 5,
+                "views": 1000,
+                "customers": 50,
+                "gmv_amount": 500.00,
+                "gmv_currency": "USD",
+            },
+        },
+        # 第三次调用：获取 v2 的详细数据
+        {
+            "code": 0,
+            "data": {
+                "likes": 200,
+                "comments": 40,
+                "shares": 10,
+                "views": 2000,
+                "customers": 100,
+                "gmv_amount": 1000.00,
+                "gmv_currency": "USD",
+            },
+        },
+    ]
+
+    records = tc._collect_shop_video_performance_detail(mock_client, "2026-04-01", "2026-04-16")
+
+    assert len(records) == 2
+    assert records[0]["video_id"] == "v1"
+    assert records[0]["likes"] == 100
+    assert records[1]["video_id"] == "v2"
+    assert records[1]["likes"] == 200
+    assert all(r["collect_date"] == "2026-04-15" for r in records)
 
 
 # ---------------------------------------------------------------------------
