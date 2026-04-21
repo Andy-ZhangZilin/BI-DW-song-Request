@@ -1033,21 +1033,21 @@ _AWIN_TRANSACTIONS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_awin_transact
 # ---------------------------------------------------------------------------
 
 _PARTNERBOOST_PERFORMANCE = """CREATE TABLE IF NOT EXISTS hqware_test.ods_partnerboost_performance (
-    collect_date DATE COMMENT 'Data collection date',
-    publisher_id VARCHAR(255) COMMENT 'Publisher ID',
-    partner VARCHAR(500) COMMENT 'Partner name',
-    clicks BIGINT COMMENT 'Clicks',
-    epc DECIMAL(18,4) COMMENT 'Earnings per click',
-    transactions BIGINT COMMENT 'Transactions',
-    conversion_rate DECIMAL(10,4) COMMENT 'Conversion rate (%)',
-    gross_sales DECIMAL(18,4) COMMENT 'Gross sales',
-    aov DECIMAL(18,4) COMMENT 'Average order value',
-    avg_commission_rate DECIMAL(10,4) COMMENT 'Average commission rate (%)',
-    commission DECIMAL(18,4) COMMENT 'Commission',
-    network_fee DECIMAL(18,4) COMMENT 'Network fee',
-    total_payout DECIMAL(18,4) COMMENT 'Total payout',
-    etl_time DATETIME COMMENT 'ETL写入时间'
-) ENGINE=OLAP UNIQUE KEY(collect_date, publisher_id) DISTRIBUTED BY HASH(collect_date) BUCKETS 10"""
+    collect_date         DATE            NOT NULL COMMENT '采集日期（快照日期）',
+    partner              VARCHAR(500)    NOT NULL COMMENT '联盟合作伙伴名称',
+    publisher_id         VARCHAR(255)    COMMENT 'Publisher ID',
+    clicks               BIGINT          COMMENT '点击数',
+    epc                  DECIMAL(18,4)   COMMENT '每次点击收益（Earnings Per Click）',
+    transactions         BIGINT          COMMENT '交易数',
+    conversion_rate      DECIMAL(10,4)   COMMENT '转化率（%）',
+    gross_sales          DECIMAL(18,4)   COMMENT '总销售额（美元）',
+    aov                  DECIMAL(18,4)   COMMENT '平均订单价值（美元）',
+    avg_commission_rate  DECIMAL(10,4)   COMMENT '平均佣金率（%）',
+    commission           DECIMAL(18,4)   COMMENT '佣金（美元）',
+    network_fee          DECIMAL(18,4)   COMMENT '网络手续费（美元）',
+    total_payout         DECIMAL(18,4)   COMMENT '总支付金额（美元）',
+    etl_time             DATETIME        COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(collect_date, partner) DISTRIBUTED BY HASH(collect_date) BUCKETS 10"""
 
 # ---------------------------------------------------------------------------
 # YouTube ODS 表
