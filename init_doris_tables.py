@@ -1003,30 +1003,26 @@ _DINGTALK_OUTDOOR_PARAMS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_dingtal
 # ---------------------------------------------------------------------------
 
 _AWIN_TRANSACTIONS = """CREATE TABLE IF NOT EXISTS hqware_test.ods_awin_transactions (
-    transaction_id VARCHAR(255) COMMENT 'Transaction ID (unique key)',
-    publisher_id VARCHAR(255) COMMENT 'Publisher ID',
-    publisher_name VARCHAR(500) COMMENT 'Publisher name',
-    commission_status VARCHAR(100) COMMENT 'Commission status',
-    commission_amount DECIMAL(18,4) COMMENT 'Commission amount',
-    sale_amount DECIMAL(18,4) COMMENT 'Sale amount',
-    click_ref VARCHAR(255) COMMENT 'Click reference',
-    transaction_date DATETIME COMMENT 'Transaction date',
-    validation_date DATETIME COMMENT 'Validation date',
-    transaction_type VARCHAR(100) COMMENT 'Transaction type',
-    commission_group_id VARCHAR(255) COMMENT 'Commission group ID',
-    commission_group_name VARCHAR(500) COMMENT 'Commission group name',
-    aov DECIMAL(18,4) COMMENT 'Average order value',
-    clicks BIGINT COMMENT 'Clicks',
-    impressions BIGINT COMMENT 'Impressions',
-    conversion_rate DECIMAL(10,4) COMMENT 'Conversion rate',
-    cpa DECIMAL(18,4) COMMENT 'Cost per acquisition',
-    cpc DECIMAL(18,4) COMMENT 'Cost per click',
-    roi DECIMAL(10,4) COMMENT 'Return on investment',
-    total_commission DECIMAL(18,4) COMMENT 'Total commission',
-    total_transactions BIGINT COMMENT 'Total transactions',
-    total_value DECIMAL(18,4) COMMENT 'Total value',
-    etl_time DATETIME COMMENT 'ETL写入时间'
-) ENGINE=OLAP UNIQUE KEY(transaction_id) DISTRIBUTED BY HASH(transaction_id) BUCKETS 10"""
+    collect_date             DATE            NOT NULL COMMENT '采集日期（US/Eastern，对齐Awin后台）',
+    impressions              BIGINT          COMMENT 'Impressions',
+    clicks                   BIGINT          COMMENT 'Clicks',
+    total_transactions       BIGINT          COMMENT 'Total Transactions',
+    pending_transactions     BIGINT          COMMENT 'Pending Transactions',
+    approved_transactions    BIGINT          COMMENT 'Approved Transactions',
+    bonus_transactions       BIGINT          COMMENT 'Bonus Transactions',
+    total_revenue            DECIMAL(18,4)   COMMENT 'Total Revenue',
+    total_commission         DECIMAL(18,4)   COMMENT 'Total Commission',
+    roi                      DECIMAL(18,6)   COMMENT 'ROI = total_revenue / total_commission',
+    cpa                      DECIMAL(18,6)   COMMENT 'CPA = total_commission / total_transactions',
+    cpc                      DECIMAL(18,6)   COMMENT 'CPC = total_commission / clicks',
+    conversion_rate          DECIMAL(18,6)   COMMENT 'Conversion Rate = total_transactions / clicks',
+    total_aov                DECIMAL(18,6)   COMMENT 'Total AOV = total_revenue / total_transactions',
+    pending_aov              DECIMAL(18,6)   COMMENT 'Pending AOV = pending_revenue / pending_transactions',
+    approved_aov             DECIMAL(18,6)   COMMENT 'Approved AOV = approved_revenue / approved_transactions',
+    bonus_aov                DECIMAL(18,6)   COMMENT 'Bonus AOV = bonus_revenue / bonus_transactions',
+    declined_aov             DECIMAL(18,6)   COMMENT 'Declined AOV = declined_revenue / declined_transactions',
+    etl_time                 DATETIME        COMMENT 'ETL写入时间'
+) ENGINE=OLAP UNIQUE KEY(collect_date) DISTRIBUTED BY HASH(collect_date) BUCKETS 10"""
 
 # ---------------------------------------------------------------------------
 # PartnerBoost ODS 表
